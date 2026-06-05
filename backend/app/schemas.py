@@ -125,3 +125,66 @@ class SOPRunOut(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+# ---- M4 知识沉淀（检修案例 + 知识图谱）----
+class RepairCaseIn(BaseModel):
+    title: str
+    device_type: str = ""
+    device_model: str = ""
+    content: str
+
+
+class RepairCaseBrief(BaseModel):
+    id: int
+    title: str
+    device_type: str
+    device_model: str
+    status: str
+    author_name: str = ""
+    created_at: datetime
+
+
+class RepairCaseOut(RepairCaseBrief):
+    content: str
+    review_note: str = ""
+    doc_id: Optional[int] = None
+    entity_count: int = 0      # 审核通过后抽取到的实体数
+    relation_count: int = 0    # 抽取到的关系数
+
+
+class CaseReviewReq(BaseModel):
+    action: str                # approve 采纳入库 / reject 退回
+    note: str = ""
+
+
+class KGNode(BaseModel):
+    id: int
+    name: str
+    etype: str
+    degree: int = 0            # 连接的关系数，前端用于节点大小
+
+
+class KGLink(BaseModel):
+    source: int
+    target: int
+    rel: str
+
+
+class KGGraph(BaseModel):
+    nodes: List[KGNode] = []
+    links: List[KGLink] = []
+    stats: dict = {}           # 各类型实体数量统计
+
+
+class KGCaseBrief(BaseModel):
+    id: int
+    title: str
+    device_model: str = ""
+    status: str = ""
+
+
+class KGEntityCases(BaseModel):
+    entity: KGNode
+    cases: List[KGCaseBrief] = []
+    neighbors: List[KGNode] = []   # 直接相邻实体

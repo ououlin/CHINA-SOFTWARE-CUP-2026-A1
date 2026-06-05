@@ -14,10 +14,16 @@ SYSTEM_PROMPT = (
 )
 
 
+def _source_label(c: dict) -> str:
+    """引用来源标注：手册带页码，案例（page=0）只显示标题。"""
+    page = c.get("page") or 0
+    return f"{c['doc_title']} 第{page}页" if page else c["doc_title"]
+
+
 def build_messages(query: str, contexts: List[dict]) -> List[dict]:
     if contexts:
         ctx_text = "\n\n".join(
-            f"[{i + 1}] (来源：{c['doc_title']} 第{c['page']}页)\n{c['content']}"
+            f"[{i + 1}] (来源：{_source_label(c)})\n{c['content']}"
             for i, c in enumerate(contexts)
         )
     else:

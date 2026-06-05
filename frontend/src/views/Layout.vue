@@ -14,6 +14,12 @@
         <el-menu-item index="/sop">
           <el-icon><Tickets /></el-icon><span>作业指引</span>
         </el-menu-item>
+        <el-menu-item index="/cases">
+          <el-icon><EditPen /></el-icon><span>知识沉淀</span>
+        </el-menu-item>
+        <el-menu-item index="/graph">
+          <el-icon><Share /></el-icon><span>知识图谱</span>
+        </el-menu-item>
         <el-menu-item index="/documents">
           <el-icon><Collection /></el-icon><span>知识库</span>
         </el-menu-item>
