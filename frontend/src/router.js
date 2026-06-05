@@ -6,6 +6,8 @@ import Layout from './views/Layout.vue'
 import Chat from './views/Chat.vue'
 import Documents from './views/Documents.vue'
 import SOP from './views/SOP.vue'
+import Cases from './views/Cases.vue'
+import Graph from './views/Graph.vue'
 
 const routes = [
   { path: '/login', component: Login, meta: { public: true } },
@@ -16,6 +18,8 @@ const routes = [
     children: [
       { path: 'chat', component: Chat, meta: { title: '智能检修问答' } },
       { path: 'sop', component: SOP, meta: { title: '标准化作业指引' } },
+      { path: 'cases', component: Cases, meta: { title: '检修案例与知识沉淀' } },
+      { path: 'graph', component: Graph, meta: { title: '知识图谱' } },
       { path: 'documents', component: Documents, meta: { title: '知识库' } },
     ],
   },

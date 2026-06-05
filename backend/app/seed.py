@@ -6,12 +6,18 @@
   auditor / auditor123 （审核员）
   admin / admin123     （管理员）
 """
+import datetime as dt
+
 from sqlalchemy import select
 
 from .auth import hash_password
 from .db import Base, SessionLocal, engine
 from .embedding import get_embedder
-from .models import DocChunk, Document, SOPStep, SOPTemplate, User
+from .ingest import ingest_text
+from .kg_store import persist_extraction
+from .models import (
+    DocChunk, Document, RepairCase, SOPStep, SOPTemplate, User,
+)
 
 # 种子检修知识：以摩托车发动机为例（赛题参考手册主题），便于演示。
 SEED_DOC = {
@@ -81,6 +87,81 @@ SEED_SOP = {
 }
 
 
+# 种子检修案例（M4 知识沉淀）：2 条已采纳（含手工知识图谱，离线可种，
+# 共享「摩托车发动机」设备节点形成跨案例关联）+ 1 条待审核（供审核演示）。
+SEED_CASES = [
+    {
+        "title": "怠速不稳故障检修案例",
+        "device_type": "摩托车发动机",
+        "device_model": "通用四冲程",
+        "content": "故障现象：发动机怠速不稳、易熄火，补油后可恢复。"
+                   "排查过程：拆检火花塞发现电极积碳发黑、间隙偏大；"
+                   "拆检化油器发现怠速油路有油泥堵塞。"
+                   "处理措施：清洗化油器怠速油路，更换同型号火花塞并将电极间隙校至 0.7mm。"
+                   "复机后怠速平稳，故障排除。",
+        "kg": {
+            "entities": [
+                {"name": "摩托车发动机", "etype": "device"},
+                {"name": "化油器", "etype": "part"},
+                {"name": "火花塞", "etype": "part"},
+                {"name": "怠速不稳", "etype": "fault"},
+                {"name": "化油器怠速油路堵塞", "etype": "cause"},
+                {"name": "火花塞积碳", "etype": "cause"},
+                {"name": "清洗化油器怠速油路", "etype": "measure"},
+                {"name": "更换火花塞", "etype": "measure"},
+            ],
+            "relations": [
+                {"source": "摩托车发动机", "rel": "包含", "target": "化油器"},
+                {"source": "摩托车发动机", "rel": "包含", "target": "火花塞"},
+                {"source": "摩托车发动机", "rel": "发生", "target": "怠速不稳"},
+                {"source": "怠速不稳", "rel": "源于", "target": "化油器怠速油路堵塞"},
+                {"source": "怠速不稳", "rel": "源于", "target": "火花塞积碳"},
+                {"source": "怠速不稳", "rel": "采取", "target": "清洗化油器怠速油路"},
+                {"source": "怠速不稳", "rel": "采取", "target": "更换火花塞"},
+            ],
+        },
+    },
+    {
+        "title": "发动机过热故障检修案例",
+        "device_type": "摩托车发动机",
+        "device_model": "通用四冲程",
+        "content": "故障现象：连续骑行后发动机过热、动力明显下降。"
+                   "排查过程：发现风冷散热片附着大量泥垢、严重影响散热；"
+                   "检查机油尺，机油液位低于下限。"
+                   "处理措施：清理散热片泥垢，补充规定标号机油至油标尺上下刻度之间。"
+                   "复机后温度恢复正常、动力回升。",
+        "kg": {
+            "entities": [
+                {"name": "摩托车发动机", "etype": "device"},
+                {"name": "散热片", "etype": "part"},
+                {"name": "发动机过热", "etype": "fault"},
+                {"name": "散热片堵塞", "etype": "cause"},
+                {"name": "机油不足", "etype": "cause"},
+                {"name": "清理散热片", "etype": "measure"},
+                {"name": "补充机油", "etype": "measure"},
+            ],
+            "relations": [
+                {"source": "摩托车发动机", "rel": "包含", "target": "散热片"},
+                {"source": "摩托车发动机", "rel": "发生", "target": "发动机过热"},
+                {"source": "发动机过热", "rel": "源于", "target": "散热片堵塞"},
+                {"source": "发动机过热", "rel": "源于", "target": "机油不足"},
+                {"source": "发动机过热", "rel": "采取", "target": "清理散热片"},
+                {"source": "发动机过热", "rel": "采取", "target": "补充机油"},
+            ],
+        },
+    },
+]
+
+SEED_PENDING_CASE = {
+    "title": "气门异响故障检修案例",
+    "device_type": "摩托车发动机",
+    "device_model": "通用四冲程",
+    "content": "故障现象：冷车启动后气门室有规律的'嗒嗒'金属敲击声，热车后略减轻、"
+               "动力略有下降。初步判断为气门间隙过大。"
+               "拟在冷态、压缩上止点下用塞尺复测并调整进/排气门间隙至标准值后观察。",
+}
+
+
 def run():
     Base.metadata.create_all(bind=engine)
     db = SessionLocal()
@@ -143,6 +224,47 @@ def run():
             print(f"种子 SOP 作业流程已写入（{len(SEED_SOP['steps'])} 步）。")
         else:
             print("种子 SOP 已存在，跳过。")
+
+        # --- 种子检修案例 + 知识图谱（仅首次）---
+        exists_case = db.execute(select(RepairCase)).first()
+        if not exists_case:
+            worker = db.execute(
+                select(User).where(User.username == "worker")
+            ).scalar_one()
+            auditor = db.execute(
+                select(User).where(User.username == "auditor")
+            ).scalar_one()
+            print("正在写入种子检修案例并抽取知识图谱 ...")
+            for sc in SEED_CASES:
+                case = RepairCase(
+                    title=sc["title"], device_type=sc["device_type"],
+                    device_model=sc["device_model"], content=sc["content"],
+                    author_id=worker.id, status="approved",
+                    reviewed_by=auditor.id, reviewed_at=dt.datetime.utcnow(),
+                    review_note="种子案例·示例采纳",
+                )
+                db.add(case)
+                db.flush()
+                doc = ingest_text(
+                    db, title=case.title, content=case.content,
+                    device_type=case.device_type, device_model=case.device_model,
+                    source_type="case", status="approved",
+                )
+                case.doc_id = doc.id
+                persist_extraction(db, case.id, sc["kg"])
+                db.commit()
+            # 1 条待审核案例
+            db.add(RepairCase(
+                title=SEED_PENDING_CASE["title"],
+                device_type=SEED_PENDING_CASE["device_type"],
+                device_model=SEED_PENDING_CASE["device_model"],
+                content=SEED_PENDING_CASE["content"],
+                author_id=worker.id, status="pending",
+            ))
+            db.commit()
+            print(f"种子案例已写入（{len(SEED_CASES)} 条已采纳含图谱 + 1 条待审核）。")
+        else:
+            print("种子案例已存在，跳过。")
 
         print("初始化完成。账号：worker/worker123, auditor/auditor123, admin/admin123")
     finally:

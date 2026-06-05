@@ -47,6 +47,40 @@ def extract_pdf_chunks(pdf_path: str) -> List[Tuple[int, str]]:
     return out
 
 
+def ingest_text(
+    db: Session,
+    title: str,
+    content: str,
+    device_type: str = "",
+    device_model: str = "",
+    source_type: str = "case",
+    status: str = "approved",
+) -> Document:
+    """把一段纯文本（如审核通过的检修案例）切块向量化，写入 documents + doc_chunks。
+
+    复用与 PDF 相同的切块/嵌入逻辑，使案例审核通过后即可被 RAG 检索并溯源。
+    返回生成的 Document（page 统一记 0，案例无页码概念）。
+    """
+    chunks = _split_text(content)
+    if not chunks:
+        raise ValueError("案例正文为空，无法入库")
+
+    doc = Document(
+        title=title, source_type=source_type, device_type=device_type,
+        device_model=device_model, file_path="", status=status,
+    )
+    db.add(doc)
+    db.flush()
+
+    embedder = get_embedder()
+    vectors = embedder.embed(chunks)
+    for content_chunk, vec in zip(chunks, vectors):
+        db.add(DocChunk(doc_id=doc.id, content=content_chunk, page=0, embedding=vec))
+    db.commit()
+    db.refresh(doc)
+    return doc
+
+
 def ingest_pdf(
     db: Session,
     pdf_path: str,

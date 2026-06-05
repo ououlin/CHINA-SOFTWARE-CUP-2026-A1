@@ -2,12 +2,13 @@
 
 M1：用户、文档、文档分块（含向量）、问答日志。
 M3：标准化作业指引——SOP 模板、SOP 步骤、作业执行记录。
-M4~M5 的知识图谱、反馈表后续阶段补充。
+M4：知识沉淀——检修案例、知识图谱实体/关系。
+M5 的反馈表后续阶段补充。
 """
 import datetime as dt
 
 from sqlalchemy import (
-    Column, Integer, String, Text, DateTime, ForeignKey, JSON
+    Column, Integer, String, Text, DateTime, ForeignKey, JSON, UniqueConstraint
 )
 from sqlalchemy.orm import relationship
 
@@ -125,4 +126,54 @@ class SOPRun(Base):
     checked_steps = Column(JSON, default=list)       # 已勾选确认的 step_id 列表
     status = Column(String(16), default="completed")  # completed
     note = Column(Text, default="")                  # 作业备注
+    created_at = Column(DateTime, default=_now)
+
+
+# ============ M4 知识沉淀（案例上传-审核-入库-入图谱）============
+
+class RepairCase(Base):
+    """检修案例/经验：一线提交 → 待审核；审核通过 → 切块入向量库 + 抽取知识图谱。"""
+    __tablename__ = "repair_cases"
+
+    id = Column(Integer, primary_key=True)
+    title = Column(String(256), nullable=False)
+    device_type = Column(String(128), default="", index=True)
+    device_model = Column(String(128), default="", index=True)
+    content = Column(Text, nullable=False)            # 案例正文 / 经验总结
+    author_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    # pending 待审核 / approved 已采纳入库 / rejected 已退回
+    status = Column(String(16), default="pending", index=True)
+    review_note = Column(Text, default="")            # 审核意见
+    reviewed_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    # 审核通过后生成的可检索文档（source_type=case），删除案例时一并清理
+    doc_id = Column(Integer, ForeignKey("documents.id"), nullable=True)
+    created_at = Column(DateTime, default=_now)
+    reviewed_at = Column(DateTime, nullable=True)
+
+
+class KGEntity(Base):
+    """知识图谱实体：设备/部件/故障/原因/措施。按 (name, etype) 去重，跨案例共享节点。"""
+    __tablename__ = "kg_entities"
+
+    id = Column(Integer, primary_key=True)
+    name = Column(String(128), nullable=False, index=True)
+    # device 设备 / part 部件 / fault 故障 / cause 原因 / measure 措施
+    etype = Column(String(16), default="device", index=True)
+    created_at = Column(DateTime, default=_now)
+
+    __table_args__ = (
+        UniqueConstraint("name", "etype", name="uq_kg_entity_name_type"),
+    )
+
+
+class KGRelation(Base):
+    """知识图谱关系（三元组）：src -[rel_type]-> dst，保留来源案例以支持节点溯源。"""
+    __tablename__ = "kg_relations"
+
+    id = Column(Integer, primary_key=True)
+    src_id = Column(Integer, ForeignKey("kg_entities.id"), nullable=False, index=True)
+    rel_type = Column(String(32), default="相关")
+    dst_id = Column(Integer, ForeignKey("kg_entities.id"), nullable=False, index=True)
+    source_case_id = Column(Integer, ForeignKey("repair_cases.id"),
+                            nullable=True, index=True)
     created_at = Column(DateTime, default=_now)
