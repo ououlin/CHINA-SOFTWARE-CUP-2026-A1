@@ -33,8 +33,9 @@
 
 1. **一台麒麟 V10/V11（LoongArch）虚机**，有 root（或 sudo）与外网访问（调云端 API）。
 2. **云端 Key**：DeepSeek Key、DashScope（百炼）Key。
-3. **把代码放到服务器** `/opt/device-repair`（推荐）：
+3. **把代码放到服务器** `/opt/device-repair`（推荐）。麒麟为 RHEL 系，若未装 git 需先装（这是唯一的手动前置步骤，因为装 git 的脚本本身在仓库里）：
    ```bash
+   sudo dnf install -y git        # 若提示没有 dnf，则： sudo yum install -y git
    sudo git clone https://github.com/ououlin/CHINA-SOFTWARE-CUP-2026-A1.git /opt/device-repair
    ```
 4. **前端构建产物**（在开发机/Windows 上构建，避免龙芯上跑 Node 工具链）：
