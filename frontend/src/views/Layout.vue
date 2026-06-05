@@ -11,6 +11,9 @@
         <el-menu-item index="/chat">
           <el-icon><ChatDotRound /></el-icon><span>智能检修问答</span>
         </el-menu-item>
+        <el-menu-item index="/sop">
+          <el-icon><Tickets /></el-icon><span>作业指引</span>
+        </el-menu-item>
         <el-menu-item index="/documents">
           <el-icon><Collection /></el-icon><span>知识库</span>
         </el-menu-item>

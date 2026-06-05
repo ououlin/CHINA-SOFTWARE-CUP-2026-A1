@@ -4,12 +4,12 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .db import Base, engine
 from . import models  # noqa: F401  确保模型注册到 Base
-from .routers import auth, chat, documents
+from .routers import auth, chat, documents, sop
 
 app = FastAPI(
     title="设备检修知识检索与作业系统 API",
     description="基于多模态大模型技术 · 第十五届中国软件杯 A组",
-    version="0.1.0 (M1)",
+    version="0.3.0 (M3)",
 )
 
 # 开发期放开 CORS；生产由 Nginx 同源反代，可收紧
@@ -29,9 +29,10 @@ def on_startup():
 
 @app.get("/api/health")
 def health():
-    return {"status": "ok", "stage": "M1"}
+    return {"status": "ok", "stage": "M3"}
 
 
 app.include_router(auth.router)
 app.include_router(chat.router)
 app.include_router(documents.router)
+app.include_router(sop.router)
