@@ -1,0 +1,44 @@
+# ============================================================
+# 生产部署依赖（LoongArch + 银河麒麟）—— 刻意规避原生编译风险
+# 与开发版 requirements.txt 的差异及理由见 deploy/README.md
+# 安装： pip install -r requirements-server.txt
+# ============================================================
+
+# --- Web 框架 ---
+fastapi==0.110.0
+# 注意：用纯净版 uvicorn（不带 [standard]），避免 uvloop / httptools 等
+# C 扩展在 LoongArch 上无 wheel 需编译的问题；异步走标准库 asyncio 事件循环。
+uvicorn==0.29.0
+# 生产进程管理（纯 Python）
+gunicorn==21.2.0
+python-multipart==0.0.9
+
+# --- 配置 / 数据校验 ---
+# pydantic v2 依赖 pydantic-core(Rust 编译)。若 LoongArch 无 wheel，
+# 需先装 Rust 工具链(yum install rust cargo)让 pip 自行编译，详见部署文档排雷。
+pydantic==2.6.4
+pydantic-settings==2.2.1
+
+# --- ORM ---
+SQLAlchemy==2.0.29
+
+# --- PostgreSQL 驱动：pg8000 为【纯 Python】实现，零编译，最稳 ---
+# 规避 psycopg2 在 LoongArch 上需 libpq + 编译的问题。
+# DATABASE_URL 形如： postgresql+pg8000://user:pwd@127.0.0.1:5432/db
+pg8000==1.31.2
+
+# --- 鉴权（纯 Python）---
+PyJWT==2.8.0
+
+# --- 调用云端大模型 / 云端 Embedding（DeepSeek、DashScope，纯 Python）---
+httpx==0.27.0
+
+# ============================================================
+# 关于 Embedding：服务器端用 EMBEDDING_PROVIDER=dashscope（云端），
+#   因此【不安装 fastembed / onnxruntime】，彻底规避 ONNX 在 LoongArch 的兼容风险。
+#   如龙芯虚机实测 onnxruntime 可用且想本地嵌入，再单独 `pip install fastembed`。
+#
+# 关于 PDF 解析：PyMuPDF 为 C 扩展，可能在 LoongArch 上不易安装；代码已做
+#   延迟导入，未安装不影响应用启动与其余功能，仅"上传 PDF 手册"不可用。
+#   若需该功能，单独尝试： pip install PyMuPDF==1.24.1
+# ============================================================

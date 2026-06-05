@@ -52,4 +52,7 @@ async def upload_pdf(
         )
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
+    except RuntimeError as e:
+        # 例如部署环境未安装 PyMuPDF：给出明确提示而非 500
+        raise HTTPException(status_code=503, detail=str(e))
     return doc

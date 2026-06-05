@@ -1,0 +1,30 @@
+# systemd 单元：设备检修系统后端（FastAPI + Gunicorn/Uvicorn）
+# 安装：
+#   sudo cp deploy/systemd/device-repair-backend.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now device-repair-backend
+# 查看日志： journalctl -u device-repair-backend -f
+#
+# 若实际安装路径或运行用户不同，相应修改下方 User / WorkingDirectory / ExecStart。
+
+[Unit]
+Description=Device Repair Knowledge System - Backend (FastAPI/Gunicorn)
+After=network.target postgresql.service
+Wants=postgresql.service
+
+[Service]
+Type=simple
+User=devrepair
+Group=devrepair
+WorkingDirectory=/opt/device-repair/backend
+Environment=PATH=/opt/device-repair/backend/.venv/bin
+# .env 由 pydantic-settings 自动从 WorkingDirectory 读取；无需在此重复
+ExecStart=/opt/device-repair/backend/.venv/bin/gunicorn -c /opt/device-repair/deploy/gunicorn_conf.py app.main:app
+Restart=on-failure
+RestartSec=3
+# 适度加固
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
