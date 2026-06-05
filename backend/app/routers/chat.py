@@ -20,29 +20,36 @@ router = APIRouter(prefix="/api/chat", tags=["chat"])
 def ask(req: AskReq, db: Session = Depends(get_db),
         user: User = Depends(get_current_user)):
     result = answer(db, req.query, device_model=req.device_model)
-    db.add(QALog(user_id=user.id, query=req.query, modality="text",
-                 answer=result["answer"], citations=result["citations"]))
+    log = QALog(user_id=user.id, query=req.query, modality="text",
+                answer=result["answer"], citations=result["citations"])
+    db.add(log)
     db.commit()
-    return result
+    db.refresh(log)
+    return {**result, "qa_id": log.id}
 
 
 @router.post("/ask_stream")
 def ask_stream(req: AskReq, db: Session = Depends(get_db),
                user: User = Depends(get_current_user)):
-    """SSE 流式返回。先推送一条 citations 事件，再推送增量 token，最后 done。"""
-    contexts, gen = answer_stream(db, req.query, device_model=req.device_model)
+    """SSE 流式：citations -> (corrections 若命中反馈增强) -> delta... -> done(含 qa_id)。"""
+    contexts, corrections, gen = answer_stream(db, req.query,
+                                               device_model=req.device_model)
 
     def event_stream():
         yield f"event: citations\ndata: {json.dumps(contexts, ensure_ascii=False)}\n\n"
+        if corrections:
+            yield f"event: corrections\ndata: {json.dumps(corrections, ensure_ascii=False)}\n\n"
         buffer = []
         for piece in gen():
             buffer.append(piece)
             yield f"event: delta\ndata: {json.dumps(piece, ensure_ascii=False)}\n\n"
         full = "".join(buffer)
-        db.add(QALog(user_id=user.id, query=req.query, modality="text",
-                     answer=full, citations=contexts))
+        log = QALog(user_id=user.id, query=req.query, modality="text",
+                    answer=full, citations=contexts)
+        db.add(log)
         db.commit()
-        yield "event: done\ndata: {}\n\n"
+        db.refresh(log)
+        yield f"event: done\ndata: {json.dumps({'qa_id': log.id})}\n\n"
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 
@@ -86,9 +93,11 @@ async def ask_image(
             yield f"event: delta\ndata: {json.dumps(piece, ensure_ascii=False)}\n\n"
         full = "".join(buffer)
         q_text = query or "[图片故障诊断]"
-        db.add(QALog(user_id=user.id, query=q_text, modality="image",
-                     answer=full, citations=contexts))
+        log = QALog(user_id=user.id, query=q_text, modality="image",
+                    answer=full, citations=contexts)
+        db.add(log)
         db.commit()
-        yield "event: done\ndata: {}\n\n"
+        db.refresh(log)
+        yield f"event: done\ndata: {json.dumps({'qa_id': log.id})}\n\n"
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")

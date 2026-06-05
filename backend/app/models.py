@@ -3,7 +3,7 @@
 M1：用户、文档、文档分块（含向量）、问答日志。
 M3：标准化作业指引——SOP 模板、SOP 步骤、作业执行记录。
 M4：知识沉淀——检修案例、知识图谱实体/关系。
-M5 的反馈表后续阶段补充。
+M5：大模型输出标注与修正——反馈/纠正表（含纠正问题向量，用于反馈增强）。
 """
 import datetime as dt
 
@@ -177,3 +177,27 @@ class KGRelation(Base):
     source_case_id = Column(Integer, ForeignKey("repair_cases.id"),
                             nullable=True, index=True)
     created_at = Column(DateTime, default=_now)
+
+
+# ============ M5 大模型输出标注与修正（反馈增强闭环）============
+
+class LLMFeedback(Base):
+    """对某条问答的人工标注：点赞/点踩 + 文字纠正。
+
+    纠正内容沉淀为"修正知识"，其原问题经嵌入后用于召回——后续相似问题
+    将优先注入该修正（轻量反馈增强），形成闭环优化。
+    每个用户对同一条问答仅一条反馈（可更新）。
+    """
+    __tablename__ = "llm_feedbacks"
+
+    id = Column(Integer, primary_key=True)
+    qa_id = Column(Integer, ForeignKey("qa_logs.id"), nullable=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    vote = Column(String(8), default="")          # up 点赞 / down 点踩 / 空
+    correction_text = Column(Text, default="")    # 人工纠正内容
+    query = Column(Text, default="")              # 冗余原问题，便于反馈增强匹配
+    # 纠正所针对问题的向量（开发期 JSON；生产 pgvector），用于相似问题召回
+    query_embedding = Column(JSON, nullable=True)
+    status = Column(String(16), default="active")  # active 生效 / archived 已下架
+    created_at = Column(DateTime, default=_now)
+    updated_at = Column(DateTime, default=_now, onupdate=_now)

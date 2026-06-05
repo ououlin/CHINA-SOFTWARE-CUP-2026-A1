@@ -40,9 +40,19 @@ class Citation(BaseModel):
     score: float
 
 
+class AppliedCorrection(BaseModel):
+    """本次回答采纳的人工修正知识（反馈增强）。"""
+    id: int
+    query: str
+    correction_text: str
+    score: float
+
+
 class AskResp(BaseModel):
     answer: str
     citations: List[Citation]
+    qa_id: Optional[int] = None
+    corrections: List[AppliedCorrection] = []
 
 
 # ---- 文档 ----
@@ -188,3 +198,31 @@ class KGEntityCases(BaseModel):
     entity: KGNode
     cases: List[KGCaseBrief] = []
     neighbors: List[KGNode] = []   # 直接相邻实体
+
+
+# ---- M5 大模型输出标注与修正 ----
+class FeedbackIn(BaseModel):
+    qa_id: int
+    # None=不变；vote: ""清除/up/down；correction_text: ""清除/文本设置（独立更新互不覆盖）
+    vote: Optional[str] = None
+    correction_text: Optional[str] = None
+
+
+class FeedbackOut(BaseModel):
+    id: int
+    qa_id: Optional[int] = None
+    vote: str
+    correction_text: str
+    query: str
+    status: str
+    user_name: str = ""
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class FeedbackStats(BaseModel):
+    up: int = 0
+    down: int = 0
+    corrections: int = 0           # 生效中的纠正条数

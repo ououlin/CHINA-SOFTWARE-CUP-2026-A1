@@ -20,6 +20,9 @@
         <el-menu-item index="/graph">
           <el-icon><Share /></el-icon><span>知识图谱</span>
         </el-menu-item>
+        <el-menu-item index="/feedback">
+          <el-icon><Star /></el-icon><span>标注修正</span>
+        </el-menu-item>
         <el-menu-item index="/documents">
           <el-icon><Collection /></el-icon><span>知识库</span>
         </el-menu-item>
