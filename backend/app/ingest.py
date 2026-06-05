@@ -2,10 +2,13 @@
 
 用于把检修手册（如摩托车发动机维修手册）沉淀为可检索知识。
 无需 VL Key，纯文本链路。
+
+注意：PyMuPDF(fitz) 为 C 扩展，在 LoongArch 上可能不易安装。这里把 fitz
+延迟到真正解析 PDF 时再导入，使得即便未安装 PyMuPDF，应用仍可正常启动、
+登录、问答、案例/作业等功能照常，仅"上传 PDF 手册"不可用（给出友好报错）。
 """
 from typing import List, Tuple
 
-import fitz  # PyMuPDF
 from sqlalchemy.orm import Session
 
 from .embedding import get_embedder
@@ -34,6 +37,13 @@ def _split_text(text: str) -> List[str]:
 
 def extract_pdf_chunks(pdf_path: str) -> List[Tuple[int, str]]:
     """返回 [(page, chunk_text), ...]，page 从 1 开始。"""
+    try:
+        import fitz  # PyMuPDF，延迟导入：未安装时不影响应用其余功能
+    except ImportError as e:
+        raise RuntimeError(
+            "未安装 PyMuPDF，无法解析 PDF。请 `pip install PyMuPDF`，"
+            "或在 LoongArch 上改用纯文本案例录入。"
+        ) from e
     out: List[Tuple[int, str]] = []
     doc = fitz.open(pdf_path)
     try:
