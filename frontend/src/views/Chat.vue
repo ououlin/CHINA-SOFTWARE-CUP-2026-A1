@@ -17,6 +17,23 @@
         </div>
         <div class="bubble">
           <img v-if="m.image" :src="m.image" class="msg-image" />
+
+          <div v-if="m.appliedCorrections && m.appliedCorrections.length"
+               class="applied-corr">
+            <el-tag type="warning" size="small" effect="dark">
+              <el-icon><MagicStick /></el-icon>&nbsp;本回答已采纳
+              {{ m.appliedCorrections.length }} 条人工修正知识
+            </el-tag>
+            <el-collapse class="ac-collapse">
+              <el-collapse-item title="查看采纳的修正">
+                <div v-for="(c, ci) in m.appliedCorrections" :key="ci" class="ac-item">
+                  <div class="ac-q">原相似问题：{{ c.query }}</div>
+                  <div class="ac-t">{{ c.correction_text }}</div>
+                </div>
+              </el-collapse-item>
+            </el-collapse>
+          </div>
+
           <div class="content" v-text="m.content || (m.loading ? '正在思考…' : '')"></div>
 
           <el-collapse v-if="m.vl" class="vl-box">
@@ -32,11 +49,34 @@
             <div class="cite-title">参考来源</div>
             <div v-for="(c, idx) in m.citations" :key="idx" class="cite">
               <el-tag size="small" type="primary" effect="plain">[{{ idx + 1 }}]</el-tag>
-              <span class="cite-src">{{ c.doc_title }} · 第{{ c.page }}页</span>
+              <span class="cite-src">{{ c.doc_title }}{{ c.page ? ` · 第${c.page}页` : '' }}</span>
               <el-tag size="small" type="info" effect="plain">
                 相似度 {{ c.score }}
               </el-tag>
               <div class="cite-content">{{ c.content }}</div>
+            </div>
+          </div>
+
+          <!-- M5 标注修正：点赞/点踩 + 文字纠正 -->
+          <div v-if="m.role === 'assistant' && m.qaId && !m.loading" class="feedback">
+            <span class="fb-label">这条回答有帮助吗？</span>
+            <el-button size="small" plain :type="m.vote === 'up' ? 'success' : ''"
+                       @click="vote(m, 'up')">👍 有用</el-button>
+            <el-button size="small" plain :type="m.vote === 'down' ? 'danger' : ''"
+                       @click="vote(m, 'down')">👎 没用</el-button>
+            <el-button size="small" text :icon="EditPen"
+                       @click="m.feedbackOpen = !m.feedbackOpen">纠正</el-button>
+            <span v-if="m.feedbackSaved" class="fb-saved">
+              <el-icon><CircleCheck /></el-icon> 已记录反馈
+            </span>
+          </div>
+          <div v-if="m.feedbackOpen" class="correction-box">
+            <el-input v-model="m.correctionText" type="textarea" :rows="2"
+                      placeholder="请填写对该回答的纠正，将沉淀为修正知识用于优化后续相似问题…" />
+            <div class="cb-actions">
+              <el-button size="small" @click="m.feedbackOpen = false">取消</el-button>
+              <el-button size="small" type="primary" :loading="m.saving"
+                         @click="saveCorrection(m)">提交纠正</el-button>
             </div>
           </div>
         </div>
@@ -72,8 +112,9 @@
 import { ref, nextTick } from 'vue'
 import { ElMessage } from 'element-plus'
 import {
-  Picture, CircleClose, View,
+  Picture, CircleClose, View, EditPen, MagicStick, CircleCheck,
 } from '@element-plus/icons-vue'
+import api from '../api'
 import { useAuthStore } from '../store'
 
 const auth = useAuthStore()
@@ -126,7 +167,11 @@ async function send() {
   if (pickedFile.value) userMsg.image = pickedPreview.value
   messages.value.push(userMsg)
 
-  const assistant = { role: 'assistant', content: '', citations: [], vl: '', loading: true }
+  const assistant = {
+    role: 'assistant', content: '', citations: [], vl: '', loading: true,
+    qaId: null, appliedCorrections: [], vote: '',
+    feedbackOpen: false, correctionText: '', feedbackSaved: false, saving: false,
+  }
   messages.value.push(assistant)
   sending.value = true
   const hasImage = !!pickedFile.value
@@ -198,11 +243,51 @@ function handleEvent(block, assistant) {
       assistant.vl = JSON.parse(data)
     } else if (event === 'citations') {
       assistant.citations = JSON.parse(data)
+    } else if (event === 'corrections') {
+      assistant.appliedCorrections = JSON.parse(data)
     } else if (event === 'delta') {
       assistant.loading = false
       assistant.content += JSON.parse(data)
+    } else if (event === 'done') {
+      const d = JSON.parse(data)
+      if (d && d.qa_id) assistant.qaId = d.qa_id
     }
   } catch (e) {}
+}
+
+// ---- M5 标注与修正 ----
+async function vote(m, v) {
+  const next = m.vote === v ? '' : v   // 再次点击同一项则取消
+  try {
+    await api.post('/feedback', { qa_id: m.qaId, vote: next })
+    m.vote = next
+    m.feedbackSaved = true
+  } catch (e) {
+    ElMessage.error('反馈提交失败')
+  }
+}
+
+async function saveCorrection(m) {
+  const text = (m.correctionText || '').trim()
+  if (!text) {
+    ElMessage.warning('请填写纠正内容')
+    return
+  }
+  m.saving = true
+  try {
+    // 提交纠正默认同时记为“没用”，更契合纠正语义
+    await api.post('/feedback', {
+      qa_id: m.qaId, correction_text: text, vote: m.vote || 'down',
+    })
+    m.vote = m.vote || 'down'
+    m.feedbackOpen = false
+    m.feedbackSaved = true
+    ElMessage.success('已提交纠正，将用于优化后续相似问题')
+  } catch (e) {
+    ElMessage.error(e.response?.data?.detail || '提交失败')
+  } finally {
+    m.saving = false
+  }
 }
 </script>
 
@@ -243,6 +328,33 @@ function handleEvent(block, assistant) {
 .cite { margin-bottom: 10px; font-size: 13px; }
 .cite-src { margin: 0 6px; color: #14418c; }
 .cite-content { color: #606266; margin-top: 4px; line-height: 1.6; }
+
+/* M5 反馈增强：采纳的人工修正 */
+.applied-corr { margin-bottom: 8px; }
+.ac-collapse { margin-top: 4px; border: none; }
+.ac-collapse :deep(.el-collapse-item__header) {
+  height: 28px; line-height: 28px; font-size: 12px; color: #b88230; border: none;
+}
+.ac-collapse :deep(.el-collapse-item__wrap) { border: none; }
+.ac-item {
+  background: #fdf6ec; border: 1px solid #faecd8; border-radius: 6px;
+  padding: 8px 10px; margin-bottom: 6px;
+}
+.ac-q { font-size: 12px; color: #909399; margin-bottom: 3px; }
+.ac-t { color: #b88230; line-height: 1.6; }
+
+/* M5 反馈条 */
+.feedback {
+  display: flex; align-items: center; gap: 8px; margin-top: 10px;
+  flex-wrap: wrap;
+}
+.fb-label { font-size: 12px; color: #909399; }
+.fb-saved { font-size: 12px; color: #67c23a; display: inline-flex; align-items: center; gap: 3px; }
+.correction-box {
+  margin-top: 8px; background: #fafafa; border: 1px solid #eee;
+  border-radius: 8px; padding: 10px;
+}
+.cb-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 8px; }
 .composer {
   margin-top: 12px; display: flex; gap: 10px; align-items: flex-start;
 }

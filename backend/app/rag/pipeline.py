@@ -1,15 +1,17 @@
-"""RAG 编排：检索 -> 组装带引用的 Prompt -> 调 LLM 生成。"""
+"""RAG 编排：检索 -> 组装带引用的 Prompt（含反馈增强修正）-> 调 LLM 生成。"""
 from typing import Iterator, List, Optional
 
 from sqlalchemy.orm import Session
 
 from ..llm import get_llm
+from .feedback import retrieve_corrections
 from .retriever import retrieve
 
 SYSTEM_PROMPT = (
     "你是工业设备检修领域的智能助手。请严格依据下方提供的【检修知识片段】回答用户问题，"
     "用中文、条理清晰地给出可执行的检修建议。"
     "引用片段内容时，在句末用 [序号] 标注来源（如 [1][2]）。"
+    "若提供了【已确认的人工修正】，请将其作为权威依据优先采纳；与片段冲突时以人工修正为准。"
     "若片段中没有相关信息，请明确说明“现有资料未覆盖该问题”，不要编造。"
 )
 
@@ -20,7 +22,8 @@ def _source_label(c: dict) -> str:
     return f"{c['doc_title']} 第{page}页" if page else c["doc_title"]
 
 
-def build_messages(query: str, contexts: List[dict]) -> List[dict]:
+def build_messages(query: str, contexts: List[dict],
+                   corrections: Optional[List[dict]] = None) -> List[dict]:
     if contexts:
         ctx_text = "\n\n".join(
             f"[{i + 1}] (来源：{_source_label(c)})\n{c['content']}"
@@ -28,31 +31,39 @@ def build_messages(query: str, contexts: List[dict]) -> List[dict]:
         )
     else:
         ctx_text = "（无检索到的相关片段）"
-    user_content = (
-        f"【检修知识片段】\n{ctx_text}\n\n"
-        f"【用户问题】\n{query}"
-    )
+
+    blocks = []
+    if corrections:
+        corr_text = "\n".join(
+            f"- 针对相似问题「{c['query']}」的已确认修正：{c['correction_text']}"
+            for c in corrections
+        )
+        blocks.append(f"【已确认的人工修正（权威，优先采纳）】\n{corr_text}")
+    blocks.append(f"【检修知识片段】\n{ctx_text}")
+    blocks.append(f"【用户问题】\n{query}")
     return [
         {"role": "system", "content": SYSTEM_PROMPT},
-        {"role": "user", "content": user_content},
+        {"role": "user", "content": "\n\n".join(blocks)},
     ]
 
 
 def answer(db: Session, query: str, device_model: Optional[str] = None) -> dict:
     contexts = retrieve(db, query, device_model=device_model)
-    messages = build_messages(query, contexts)
+    corrections = retrieve_corrections(db, query)
+    messages = build_messages(query, contexts, corrections)
     text = get_llm().chat(messages)
-    return {"answer": text, "citations": contexts}
+    return {"answer": text, "citations": contexts, "corrections": corrections}
 
 
 def answer_stream(db: Session, query: str,
                   device_model: Optional[str] = None):
-    """返回 (contexts, 文本流生成器)。"""
+    """返回 (contexts, corrections, 文本流生成器)。"""
     contexts = retrieve(db, query, device_model=device_model)
-    messages = build_messages(query, contexts)
+    corrections = retrieve_corrections(db, query)
+    messages = build_messages(query, contexts, corrections)
 
     def gen() -> Iterator[str]:
         for piece in get_llm().stream(messages):
             yield piece
 
-    return contexts, gen
+    return contexts, corrections, gen
