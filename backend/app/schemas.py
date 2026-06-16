@@ -226,3 +226,73 @@ class FeedbackStats(BaseModel):
     up: int = 0
     down: int = 0
     corrections: int = 0           # 生效中的纠正条数
+
+
+# ---- 增强 G1 设备健康档案（一机一档）----
+class DeviceIn(BaseModel):
+    code: str
+    name: str
+    device_type: str = ""
+    device_model: str = ""
+    location: str = ""
+    status: str = "normal"
+    commissioned_at: Optional[datetime] = None
+    note: str = ""
+
+
+class DeviceBrief(BaseModel):
+    id: int
+    code: str
+    name: str
+    device_type: str
+    device_model: str
+    location: str
+    status: str
+    fault_count: int = 0           # 累计报修/故障次数
+    open_count: int = 0            # 未结报修数
+    created_at: datetime
+
+
+class MaintenanceRecordIn(BaseModel):
+    title: str
+    fault_desc: str = ""
+    severity: str = "general"
+
+
+class MaintenanceRecordHandle(BaseModel):
+    handling: str = ""
+    status: str = "done"           # processing 处理中 / done 已完成
+
+
+class MaintenanceRecordOut(BaseModel):
+    id: int
+    device_id: int
+    title: str
+    fault_desc: str
+    handling: str
+    severity: str
+    status: str
+    reporter_name: str = ""
+    handler_name: str = ""
+    created_at: datetime
+    done_at: Optional[datetime] = None
+
+
+class DeviceLinkedCase(BaseModel):
+    id: int
+    title: str
+    device_model: str = ""
+
+
+class DeviceLinkedSOP(BaseModel):
+    id: int
+    name: str
+    repair_level: str = ""
+
+
+class DeviceDetail(DeviceBrief):
+    commissioned_at: Optional[datetime] = None
+    note: str = ""
+    records: List[MaintenanceRecordOut] = []      # 检修时间线（精确）
+    linked_cases: List[DeviceLinkedCase] = []     # 同型号检修案例（软关联）
+    linked_sops: List[DeviceLinkedSOP] = []       # 适用作业指引（软关联）

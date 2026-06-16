@@ -17,6 +17,7 @@ from .ingest import ingest_text
 from .kg_store import persist_extraction
 from .models import (
     DocChunk, Document, RepairCase, SOPStep, SOPTemplate, User,
+    Device, MaintenanceRecord,
 )
 
 # 种子检修知识：以摩托车发动机为例（赛题参考手册主题），便于演示。
@@ -161,6 +162,33 @@ SEED_PENDING_CASE = {
                "拟在冷态、压缩上止点下用塞尺复测并调整进/排气门间隙至标准值后观察。",
 }
 
+# 种子设备台账（增强 G1 一机一档）：同型号「通用四冲程」便于软关联现有案例/SOP；
+# 报修记录刻意让「怠速不稳」高频复发，为故障预警（G6）提供素材。
+# 每台：(资产编号, 名称, 类型, 型号, 位置, 状态, 投运天数前, 备注, 报修列表)
+# 报修：(标题, 故障描述, 处理措施, 严重度, 状态, 距今天数)
+SEED_DEVICES = [
+    ("MTO-2301", "本田 CG125 教学台架发动机", "摩托车发动机", "通用四冲程",
+     "实训楼 A-101", "normal", 540, "教学用一号台架，使用频率高",
+     [
+         ("怠速不稳、易熄火", "冷车怠速抖动明显，补油后恢复。",
+          "清洗化油器怠速油路，更换火花塞并校正间隙。", "general", "done", 86),
+         ("怠速再次不稳", "运行约两周后怠速不稳复发。",
+          "复查化油器，清理怠速量孔油泥并重新调整混合比。", "serious", "done", 41),
+         ("火花塞积碳发黑", "动力下降，拆检火花塞电极积碳。",
+          "更换同型号火花塞，建议缩短保养周期。", "general", "done", 12),
+     ]),
+    ("MTO-2302", "雅马哈 YBR125 实训发动机", "摩托车发动机", "通用四冲程",
+     "实训楼 A-102", "repairing", 420, "二号台架",
+     [
+         ("连续运行后过热", "连续骑行后发动机过热、动力下降。",
+          "清理风冷散热片泥垢，补充机油至标准液位。", "serious", "done", 60),
+         ("气门室异响", "冷启动有规律'嗒嗒'金属敲击声，疑气门间隙过大。",
+          "", "urgent", "open", 2),
+     ]),
+    ("MTO-2303", "通用四冲程教学发动机", "摩托车发动机", "通用四冲程",
+     "实训楼 B-201", "stopped", 300, "三号台架，当前停用待保养", []),
+]
+
 
 def run():
     Base.metadata.create_all(bind=engine)
@@ -265,6 +293,42 @@ def run():
             print(f"种子案例已写入（{len(SEED_CASES)} 条已采纳含图谱 + 1 条待审核）。")
         else:
             print("种子案例已存在，跳过。")
+
+        # --- 种子设备台账 + 报修记录（增强 G1，仅首次）---
+        exists_dev = db.execute(select(Device)).first()
+        if not exists_dev:
+            worker = db.execute(
+                select(User).where(User.username == "worker")
+            ).scalar_one()
+            auditor = db.execute(
+                select(User).where(User.username == "auditor")
+            ).scalar_one()
+            now = dt.datetime.utcnow()
+            dev_count = rec_count = 0
+            for (code, name, dtype, model, loc, st, days_ago, note, recs) in SEED_DEVICES:
+                d = Device(
+                    code=code, name=name, device_type=dtype, device_model=model,
+                    location=loc, status=st, note=note,
+                    commissioned_at=now - dt.timedelta(days=days_ago),
+                )
+                db.add(d)
+                db.flush()
+                dev_count += 1
+                for (title, fault, handling, sev, rstatus, r_days) in recs:
+                    created = now - dt.timedelta(days=r_days)
+                    db.add(MaintenanceRecord(
+                        device_id=d.id, title=title, fault_desc=fault,
+                        handling=handling, severity=sev, status=rstatus,
+                        reporter_id=worker.id,
+                        handler_id=(auditor.id if rstatus == "done" else None),
+                        created_at=created,
+                        done_at=(created + dt.timedelta(days=1) if rstatus == "done" else None),
+                    ))
+                    rec_count += 1
+            db.commit()
+            print(f"种子设备台账已写入（{dev_count} 台设备 + {rec_count} 条报修记录）。")
+        else:
+            print("种子设备已存在，跳过。")
 
         print("初始化完成。账号：worker/worker123, auditor/auditor123, admin/admin123")
     finally:

@@ -201,3 +201,52 @@ class LLMFeedback(Base):
     status = Column(String(16), default="active")  # active 生效 / archived 已下架
     created_at = Column(DateTime, default=_now)
     updated_at = Column(DateTime, default=_now, onupdate=_now)
+
+
+# ============ 增强 G1 设备健康档案（一机一档）============
+
+class Device(Base):
+    """设备台账：一机一档。资产编号 code 唯一，作为二维码/扫码入口标识。
+
+    设备的检修案例/适用 SOP 按 device_type+device_model 软关联现有数据；
+    报修与维修历史由 MaintenanceRecord 精确挂在 device_id 上，构成检修时间线。
+    """
+    __tablename__ = "devices"
+
+    id = Column(Integer, primary_key=True)
+    code = Column(String(64), unique=True, nullable=False, index=True)  # 资产编号（扫码标识）
+    name = Column(String(128), nullable=False)                  # 设备名称
+    device_type = Column(String(128), default="", index=True)
+    device_model = Column(String(128), default="", index=True)
+    location = Column(String(128), default="")                  # 安装位置/产线
+    # normal 运行中 / repairing 维修中 / stopped 停机 / scrapped 报废
+    status = Column(String(16), default="normal", index=True)
+    commissioned_at = Column(DateTime, nullable=True)           # 投运日期
+    note = Column(Text, default="")
+    created_at = Column(DateTime, default=_now)
+
+    records = relationship(
+        "MaintenanceRecord", back_populates="device",
+        order_by="MaintenanceRecord.id.desc()", cascade="all, delete-orphan",
+    )
+
+
+class MaintenanceRecord(Base):
+    """报修 / 维修记录：精确挂在某台设备上，构成其检修时间线，
+    亦为故障预警（增强 G6）提供按设备/故障的统计数据。"""
+    __tablename__ = "maintenance_records"
+
+    id = Column(Integer, primary_key=True)
+    device_id = Column(Integer, ForeignKey("devices.id"), nullable=False, index=True)
+    title = Column(String(256), nullable=False)         # 报修/故障标题
+    fault_desc = Column(Text, default="")               # 故障现象描述
+    handling = Column(Text, default="")                 # 处理措施
+    severity = Column(String(16), default="general")    # general 一般 / serious 严重 / urgent 紧急
+    # open 待处理 / processing 处理中 / done 已完成
+    status = Column(String(16), default="open", index=True)
+    reporter_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    handler_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime, default=_now)
+    done_at = Column(DateTime, nullable=True)
+
+    device = relationship("Device", back_populates="records")

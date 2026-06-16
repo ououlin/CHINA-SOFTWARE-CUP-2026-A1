@@ -9,6 +9,7 @@ import SOP from './views/SOP.vue'
 import Cases from './views/Cases.vue'
 import Graph from './views/Graph.vue'
 import Feedback from './views/Feedback.vue'
+import Devices from './views/Devices.vue'
 
 const routes = [
   { path: '/login', component: Login, meta: { public: true } },
@@ -18,6 +19,7 @@ const routes = [
     redirect: '/chat',
     children: [
       { path: 'chat', component: Chat, meta: { title: '智能检修问答' } },
+      { path: 'devices', component: Devices, meta: { title: '设备健康档案' } },
       { path: 'sop', component: SOP, meta: { title: '标准化作业指引' } },
       { path: 'cases', component: Cases, meta: { title: '检修案例与知识沉淀' } },
       { path: 'graph', component: Graph, meta: { title: '知识图谱' } },
