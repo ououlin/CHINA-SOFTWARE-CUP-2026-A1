@@ -3,13 +3,16 @@
     <!-- 风险概览 -->
     <div class="summary">
       <div class="sum-card high">
-        <div class="n">{{ summary.high }}</div><div class="l">高风险设备</div>
+        <div class="sc-head"><span>高风险设备</span><el-icon><WarningFilled /></el-icon></div>
+        <div class="sc-body"><span class="sc-num">{{ summary.high }}</span><span class="sc-unit">台</span></div>
       </div>
       <div class="sum-card mid">
-        <div class="n">{{ summary.medium }}</div><div class="l">中风险设备</div>
+        <div class="sc-head"><span>中风险设备</span><el-icon><Warning /></el-icon></div>
+        <div class="sc-body"><span class="sc-num">{{ summary.medium }}</span><span class="sc-unit">台</span></div>
       </div>
       <div class="sum-card low">
-        <div class="n">{{ summary.low }}</div><div class="l">低风险设备</div>
+        <div class="sc-head"><span>低风险设备</span><el-icon><CircleCheck /></el-icon></div>
+        <div class="sc-body"><span class="sc-num">{{ summary.low }}</span><span class="sc-unit">台</span></div>
       </div>
     </div>
 
@@ -62,7 +65,7 @@
 <script setup>
 import { ref, reactive, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { ElMessage } from 'element-plus'
-import { MagicStick, Download } from '@element-plus/icons-vue'
+import { MagicStick, Download, WarningFilled, Warning, CircleCheck } from '@element-plus/icons-vue'
 import * as echarts from 'echarts'
 import api from '../api'
 
@@ -150,17 +153,22 @@ onBeforeUnmount(() => {
 .alert-page { display: flex; flex-direction: column; gap: 14px; }
 .summary { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
 .sum-card {
-  background: #fff; border-radius: 10px; padding: 16px 20px;
-  border: 1px solid #ebeef5; border-left: 4px solid #909399;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, .04);
+  background: #fff; border: 1px solid #ebeef5; border-radius: 12px;
+  padding: 15px 18px 14px; box-shadow: 0 1px 3px rgba(20, 40, 80, .04);
+  transition: all .18s;
 }
-.sum-card.high { border-left-color: #f56c6c; }
-.sum-card.mid { border-left-color: #e6a23c; }
-.sum-card.low { border-left-color: #909399; }
-.sum-card .n { font-size: 28px; font-weight: 700; color: #1f2d3d; }
-.sum-card.high .n { color: #f56c6c; }
-.sum-card.mid .n { color: #e6a23c; }
-.sum-card .l { font-size: 13px; color: #909399; margin-top: 2px; }
+.sum-card:hover { transform: translateY(-2px); box-shadow: 0 10px 24px rgba(20, 40, 80, .10); }
+.sc-head { display: flex; align-items: center; justify-content: space-between; font-size: 13px; color: #6b7280; }
+.sc-head .el-icon { font-size: 17px; color: #c4ccda; }
+.sc-body { display: flex; align-items: baseline; gap: 4px; margin-top: 12px; }
+.sc-num { font-size: 30px; font-weight: 700; line-height: 1; color: #1f2329; letter-spacing: -.6px; }
+.sc-unit { font-size: 13px; color: #a0a4ab; }
+.sum-card.high { border-color: #f1c7c7; background: #fffafa; }
+.sum-card.high .sc-num { color: #e24b4a; }
+.sum-card.high .sc-head, .sum-card.high .sc-head .el-icon { color: #c0504a; }
+.sum-card.mid .sc-num { color: #e6a23c; }
+.sum-card.mid .sc-head .el-icon { color: #e6a23c; }
+.sum-card.low .sc-head .el-icon { color: #9aa6b5; }
 .row { margin: 0 !important; }
 .panel {
   background: #fff; border-radius: 10px; padding: 12px 16px;

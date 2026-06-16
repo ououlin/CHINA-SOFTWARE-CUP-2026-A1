@@ -73,8 +73,12 @@
           <div class="stat"><span class="num warn">{{ current.open_count }}</span><span class="lbl">未结报修</span></div>
           <div class="stat"><span class="num">{{ current.linked_cases.length }}</span><span class="lbl">关联案例</span></div>
           <div class="stat"><span class="num">{{ current.linked_sops.length }}</span><span class="lbl">适用指引</span></div>
-          <el-button class="rep-btn" type="warning" plain :icon="Warning" size="small"
-                     @click="openReport(current)">提交报修</el-button>
+          <div class="acts">
+            <el-button type="warning" plain :icon="Warning" size="small"
+                       @click="openReport(current)">提交报修</el-button>
+            <el-button type="primary" plain :icon="Document" size="small"
+                       :loading="reportDocLoading" @click="genReportDoc">生成检修报告</el-button>
+          </div>
         </div>
 
         <el-tabs v-model="tab">
@@ -170,13 +174,26 @@
         <el-button type="warning" :loading="reporting" @click="doReport">提交报修</el-button>
       </template>
     </el-dialog>
+
+    <!-- 智能检修报告 -->
+    <el-dialog v-model="reportDocDialog" title="设备检修报告（AI 生成）" width="700px" top="6vh">
+      <div v-loading="reportDocLoading" element-loading-text="大模型正在汇总检修报告……"
+           class="report-wrap">
+        <div class="report-md">{{ reportDocText }}</div>
+      </div>
+      <template #footer>
+        <el-button @click="reportDocDialog = false">关闭</el-button>
+        <el-button type="primary" :icon="Download" :disabled="!reportDocText"
+                   @click="downloadReportDoc">下载 Markdown</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
 import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, View, Warning, Delete, Document, Tickets } from '@element-plus/icons-vue'
+import { Plus, View, Warning, Delete, Document, Tickets, Download } from '@element-plus/icons-vue'
 import api from '../api'
 import { useAuthStore } from '../store'
 
@@ -348,6 +365,40 @@ async function handleRecord(r) {
   }
 }
 
+// ---- 智能检修报告（G5）----
+const reportDocDialog = ref(false)
+const reportDocLoading = ref(false)
+const reportDocText = ref('')
+const reportDocMeta = reactive({ code: '', device: '' })
+async function genReportDoc() {
+  if (!current.value) return
+  reportDocLoading.value = true
+  reportDocDialog.value = true
+  reportDocText.value = ''
+  try {
+    const { data } = await api.post(`/devices/${current.value.id}/report`)
+    reportDocText.value = data.report
+    reportDocMeta.code = data.code
+    reportDocMeta.device = data.device
+  } catch (e) {
+    reportDocDialog.value = false
+    ElMessage.error(e.response?.data?.detail || '报告生成失败')
+  } finally {
+    reportDocLoading.value = false
+  }
+}
+function downloadReportDoc() {
+  if (!reportDocText.value) return
+  const today = new Date().toISOString().slice(0, 10)
+  const blob = new Blob([reportDocText.value], { type: 'text/markdown;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `检修报告_${reportDocMeta.code || 'device'}_${today}.md`
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
 onMounted(load)
 </script>
 
@@ -360,10 +411,15 @@ onMounted(load)
 .detail { padding: 2px 4px; }
 .overview { display: flex; align-items: center; gap: 28px; margin: 18px 4px; }
 .overview .stat { display: flex; flex-direction: column; align-items: center; }
-.overview .num { font-size: 24px; font-weight: 700; color: #14418c; }
+.overview .num { font-size: 26px; font-weight: 700; color: #1f2329; letter-spacing: -.4px; }
 .overview .num.warn { color: #e6a23c; }
 .overview .lbl { font-size: 12px; color: #909399; }
-.overview .rep-btn { margin-left: auto; }
+.overview .acts { margin-left: auto; display: flex; gap: 8px; }
+.report-wrap { min-height: 180px; max-height: 60vh; overflow-y: auto; }
+.report-md {
+  white-space: pre-wrap; line-height: 1.75; color: #303133; font-size: 14px;
+  padding: 4px 2px;
+}
 .rec-card { margin-bottom: 2px; }
 .rec-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
 .rec-title { font-weight: 600; }
