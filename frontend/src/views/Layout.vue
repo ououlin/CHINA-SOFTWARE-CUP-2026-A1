@@ -20,6 +20,9 @@
         <el-menu-item index="/alert">
           <el-icon><WarningFilled /></el-icon><span>故障预警</span>
         </el-menu-item>
+        <el-menu-item index="/scan">
+          <el-icon><Postcard /></el-icon><span>扫码报修</span>
+        </el-menu-item>
         <el-menu-item index="/sop">
           <el-icon><Tickets /></el-icon><span>作业指引</span>
         </el-menu-item>
