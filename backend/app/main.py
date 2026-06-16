@@ -4,7 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .db import Base, engine
 from . import models  # noqa: F401  确保模型注册到 Base
-from .routers import auth, chat, documents, sop, cases, kg, feedback, devices
+from .routers import auth, chat, documents, sop, cases, kg, feedback, devices, dashboard
 
 app = FastAPI(
     title="设备检修知识检索与作业系统 API",
@@ -40,3 +40,4 @@ app.include_router(cases.router)
 app.include_router(kg.router)
 app.include_router(feedback.router)
 app.include_router(devices.router)
+app.include_router(dashboard.router)

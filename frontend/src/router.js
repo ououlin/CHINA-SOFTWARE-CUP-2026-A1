@@ -10,14 +10,16 @@ import Cases from './views/Cases.vue'
 import Graph from './views/Graph.vue'
 import Feedback from './views/Feedback.vue'
 import Devices from './views/Devices.vue'
+import Dashboard from './views/Dashboard.vue'
 
 const routes = [
   { path: '/login', component: Login, meta: { public: true } },
   {
     path: '/',
     component: Layout,
-    redirect: '/chat',
+    redirect: '/dashboard',
     children: [
+      { path: 'dashboard', component: Dashboard, meta: { title: '运营数据看板' } },
       { path: 'chat', component: Chat, meta: { title: '智能检修问答' } },
       { path: 'devices', component: Devices, meta: { title: '设备健康档案' } },
       { path: 'sop', component: SOP, meta: { title: '标准化作业指引' } },
@@ -40,7 +42,7 @@ router.beforeEach((to) => {
     return '/login'
   }
   if (to.path === '/login' && auth.isLoggedIn) {
-    return '/chat'
+    return '/dashboard'
   }
 })
 

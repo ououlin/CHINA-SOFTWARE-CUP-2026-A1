@@ -8,6 +8,9 @@
       <el-menu :default-active="activePath" router class="menu"
                background-color="#14418c" text-color="#cdd9f0"
                active-text-color="#fff">
+        <el-menu-item index="/dashboard">
+          <el-icon><DataBoard /></el-icon><span>数据看板</span>
+        </el-menu-item>
         <el-menu-item index="/chat">
           <el-icon><ChatDotRound /></el-icon><span>智能检修问答</span>
         </el-menu-item>
