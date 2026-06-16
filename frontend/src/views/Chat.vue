@@ -46,13 +46,14 @@
           </el-collapse>
 
           <div v-if="m.citations && m.citations.length" class="citations">
-            <div class="cite-title">参考来源</div>
+            <div class="cite-title">参考来源 · 混合重排</div>
             <div v-for="(c, idx) in m.citations" :key="idx" class="cite">
               <el-tag size="small" type="primary" effect="plain">[{{ idx + 1 }}]</el-tag>
               <span class="cite-src">{{ c.doc_title }}{{ c.page ? ` · 第${c.page}页` : '' }}</span>
-              <el-tag size="small" type="info" effect="plain">
-                相似度 {{ c.score }}
-              </el-tag>
+              <el-tag size="small" type="info" effect="plain">综合 {{ c.score }}</el-tag>
+              <span v-if="c.vec_score !== undefined" class="rerank-sub">
+                语义 {{ c.vec_score }} · 字面 {{ c.lex_score }}
+              </span>
               <div class="cite-content">{{ c.content }}</div>
             </div>
           </div>
@@ -391,6 +392,7 @@ async function saveCorrection(m) {
 .cite-title { font-size: 12px; color: #8a8f99; margin-bottom: 8px; }
 .cite { margin-bottom: 10px; font-size: 13px; }
 .cite-src { margin: 0 6px; color: #14418c; }
+.rerank-sub { margin-left: 6px; font-size: 12px; color: #909399; }
 .cite-content { color: #606266; margin-top: 4px; line-height: 1.6; }
 
 /* M5 反馈增强：采纳的人工修正 */

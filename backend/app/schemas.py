@@ -43,7 +43,9 @@ class Citation(BaseModel):
     device_model: str
     page: int
     content: str
-    score: float
+    score: float                 # 混合重排后的综合分
+    vec_score: float = 0.0       # 语义（向量）相似度
+    lex_score: float = 0.0       # 字面词项重叠度
 
 
 class AppliedCorrection(BaseModel):
