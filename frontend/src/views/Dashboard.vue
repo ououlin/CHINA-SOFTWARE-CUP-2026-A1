@@ -1,5 +1,21 @@
 <template>
   <div class="dash" v-loading="loading">
+    <!-- 欢迎横幅 -->
+    <div class="hero">
+      <div class="hero-grid"></div>
+      <div class="hero-text">
+        <h2>{{ greeting }}，{{ userName }}</h2>
+        <p>{{ todayStr }} · 设备检修知识检索与作业系统 · 运营总览</p>
+      </div>
+      <div class="hero-stats">
+        <div class="hs"><div class="hsn">{{ cards.device_total ?? '—' }}</div><div class="hsl">在册设备</div></div>
+        <div class="hs-sep"></div>
+        <div class="hs"><div class="hsn">{{ cards.qa_total ?? '—' }}</div><div class="hsl">累计问答</div></div>
+        <div class="hs-sep"></div>
+        <div class="hs"><div class="hsn">{{ cards.case_total ?? '—' }}</div><div class="hsl">沉淀案例</div></div>
+      </div>
+    </div>
+
     <!-- 指标卡片 -->
     <div class="cards">
       <div v-for="c in cardDefs" :key="c.key" class="card" :style="{ '--accent': c.color }">
@@ -46,16 +62,29 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted, onBeforeUnmount, nextTick } from 'vue'
+import { ref, reactive, computed, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { ElMessage } from 'element-plus'
 import {
   Monitor, Warning, Collection, EditPen, Tickets, ChatDotRound, Star, Share,
 } from '@element-plus/icons-vue'
 import * as echarts from 'echarts'
 import api from '../api'
+import { useAuthStore } from '../store'
 
 const loading = ref(false)
 const cards = reactive({})
+
+const auth = useAuthStore()
+const userName = computed(() => auth.user?.display_name || '用户')
+const greeting = computed(() => {
+  const h = new Date().getHours()
+  return h < 6 ? '凌晨好' : h < 12 ? '早上好' : h < 14 ? '中午好' : h < 18 ? '下午好' : '晚上好'
+})
+const todayStr = computed(() => {
+  const d = new Date()
+  const week = ['日', '一', '二', '三', '四', '五', '六'][d.getDay()]
+  return `${d.getFullYear()} 年 ${d.getMonth() + 1} 月 ${d.getDate()} 日 · 星期${week}`
+})
 
 const cardDefs = [
   { key: 'device_total', label: '设备总数', icon: Monitor, color: '#14418c' },
@@ -186,6 +215,31 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .dash { display: flex; flex-direction: column; gap: 14px; }
+
+/* 欢迎横幅 */
+.hero {
+  position: relative; overflow: hidden; border-radius: 12px;
+  background: linear-gradient(120deg, #14418c 0%, #1f6feb 100%);
+  color: #fff; padding: 22px 28px; display: flex; align-items: center;
+  justify-content: space-between;
+}
+.hero-grid {
+  position: absolute; inset: 0;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, .07) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, .07) 1px, transparent 1px);
+  background-size: 30px 30px;
+  mask-image: linear-gradient(90deg, #000 30%, transparent 90%);
+}
+.hero-text { position: relative; z-index: 2; }
+.hero-text h2 { margin: 0 0 6px; font-size: 23px; font-weight: 700; }
+.hero-text p { margin: 0; font-size: 13px; color: rgba(255, 255, 255, .82); }
+.hero-stats { position: relative; z-index: 2; display: flex; align-items: center; gap: 22px; }
+.hs { text-align: center; }
+.hsn { font-size: 26px; font-weight: 700; line-height: 1; }
+.hsl { font-size: 12px; color: rgba(255, 255, 255, .8); margin-top: 5px; }
+.hs-sep { width: 1px; height: 32px; background: rgba(255, 255, 255, .25); }
+
 .cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
 .card {
   position: relative; display: flex; align-items: center; gap: 14px;
@@ -194,9 +248,10 @@ onBeforeUnmount(() => {
   box-shadow: 0 1px 4px rgba(0, 0, 0, .04);
 }
 .card .ic {
-  width: 44px; height: 44px; border-radius: 10px; display: flex;
-  align-items: center; justify-content: center;
-  color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, #fff);
+  width: 46px; height: 46px; border-radius: 12px; display: flex;
+  align-items: center; justify-content: center; color: #fff;
+  background: linear-gradient(135deg, var(--accent), color-mix(in srgb, var(--accent) 62%, #1a1a1a));
+  box-shadow: 0 6px 14px color-mix(in srgb, var(--accent) 32%, transparent);
 }
 .card .num { font-size: 26px; font-weight: 700; color: #1f2d3d; line-height: 1.1; }
 .card .lbl { font-size: 13px; color: #909399; margin-top: 2px; }

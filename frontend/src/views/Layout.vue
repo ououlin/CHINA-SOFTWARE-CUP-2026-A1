@@ -6,7 +6,7 @@
         <span>检修智能助手</span>
       </div>
       <el-menu :default-active="activePath" router class="menu"
-               background-color="#14418c" text-color="#cdd9f0"
+               background-color="transparent" text-color="#cdd9f0"
                active-text-color="#fff">
         <el-menu-item index="/dashboard">
           <el-icon><DataBoard /></el-icon><span>数据看板</span>
@@ -89,16 +89,25 @@ function onCommand(cmd) {
 
 <style scoped>
 .app-layout { height: 100%; }
-.aside { background: #14418c; }
+.aside { background: linear-gradient(180deg, #0f3270 0%, #14418c 55%, #163d80 100%); }
 .logo {
   height: 56px; display: flex; align-items: center; gap: 10px;
   color: #fff; font-size: 17px; font-weight: 600; padding-left: 20px;
-  background: #0f3270;
+  background: linear-gradient(120deg, #0b2a63, #14418c);
+  border-bottom: 1px solid rgba(255, 255, 255, .08);
 }
 .menu { border-right: none; }
+.menu :deep(.el-menu-item) { margin: 2px 10px; border-radius: 8px; }
+.menu :deep(.el-menu-item:hover) { background: rgba(255, 255, 255, .08) !important; }
+.menu :deep(.el-menu-item.is-active) {
+  background: rgba(79, 155, 255, .22) !important;
+  box-shadow: inset 3px 0 0 #4d9bff;
+  font-weight: 600;
+}
 .header {
   background: #fff; display: flex; align-items: center;
   justify-content: space-between; border-bottom: 1px solid #ebeef5;
+  box-shadow: 0 1px 6px rgba(0, 0, 0, .03);
 }
 .title { font-size: 16px; font-weight: 600; }
 .user { display: flex; align-items: center; gap: 6px; cursor: pointer; }
