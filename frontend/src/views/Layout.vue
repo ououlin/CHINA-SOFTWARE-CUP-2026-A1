@@ -43,7 +43,13 @@
 
     <el-container>
       <el-header class="header">
-        <div class="title">{{ currentTitle }}</div>
+        <div class="head-left">
+          <div class="head-bar"></div>
+          <div class="head-meta">
+            <div class="head-title">{{ currentTitle }}</div>
+            <div v-if="currentDesc" class="head-desc">{{ currentDesc }}</div>
+          </div>
+        </div>
         <el-dropdown @command="onCommand">
           <span class="user">
             <el-icon><UserFilled /></el-icon>
@@ -75,6 +81,7 @@ const auth = useAuthStore()
 
 const activePath = computed(() => route.path)
 const currentTitle = computed(() => route.meta.title || '')
+const currentDesc = computed(() => route.meta.desc || '')
 const roleLabel = computed(() => ({
   worker: '一线人员', auditor: '审核员', admin: '管理员',
 }[auth.user?.role] || ''))
@@ -107,9 +114,15 @@ function onCommand(cmd) {
 .header {
   background: #fff; display: flex; align-items: center;
   justify-content: space-between; border-bottom: 1px solid #ebeef5;
-  box-shadow: 0 1px 6px rgba(0, 0, 0, .03);
+  box-shadow: 0 1px 6px rgba(0, 0, 0, .03); height: 60px;
 }
-.title { font-size: 16px; font-weight: 600; }
+.head-left { display: flex; align-items: center; gap: 12px; }
+.head-bar {
+  width: 4px; height: 32px; border-radius: 3px;
+  background: linear-gradient(180deg, #1f6feb, #14418c);
+}
+.head-title { font-size: 17px; font-weight: 700; color: #1f2329; line-height: 1.2; }
+.head-desc { font-size: 12.5px; color: #8a8f99; margin-top: 2px; }
 .user { display: flex; align-items: center; gap: 6px; cursor: pointer; }
 .main { background: #f5f7fa; padding: 18px; }
 </style>

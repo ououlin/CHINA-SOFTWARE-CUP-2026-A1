@@ -1,12 +1,56 @@
 :root {
   --brand: #1f6feb;
   --brand-deep: #14418c;
+  --brand-grad: linear-gradient(135deg, #1f6feb 0%, #14418c 100%);
+  --radius: 12px;
+  --radius-sm: 8px;
+  --shadow-sm: 0 1px 4px rgba(20, 40, 80, .05);
+  --shadow: 0 6px 22px rgba(20, 40, 80, .09);
+  --bd: #ebeef5;
+  --ink: #1f2329;
+  --muted: #8a8f99;
 }
 * { box-sizing: border-box; }
 html, body, #app { height: 100%; margin: 0; }
 body {
   font-family: "Microsoft YaHei", "PingFang SC", system-ui, sans-serif;
   background: #f5f7fa;
-  color: #1f2329;
+  color: var(--ink);
 }
-.text-muted { color: #8a8f99; }
+.text-muted { color: var(--muted); }
+
+/* ---- 滚动条美化 ---- */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-thumb { background: #cbd2dc; border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: #aab3c1; }
+::-webkit-scrollbar-track { background: transparent; }
+
+/* ---- 全局精致化：圆角 / 阴影 / 边框统一 ---- */
+.el-card {
+  border-radius: var(--radius) !important;
+  border: 1px solid var(--bd) !important;
+}
+.el-button { border-radius: var(--radius-sm); }
+.el-input__wrapper, .el-textarea__inner, .el-select__wrapper {
+  border-radius: var(--radius-sm) !important;
+}
+.el-table th.el-table__cell { background: #f7f9fc !important; font-weight: 600; }
+.el-tag { border-radius: 6px; }
+.el-drawer__header { margin-bottom: 0; padding-bottom: 16px; border-bottom: 1px solid var(--bd); }
+.el-dialog { border-radius: var(--radius) !important; overflow: hidden; }
+
+/* ---- 通用页面标题栏（内页统一头部）---- */
+.page-head {
+  display: flex; align-items: center; gap: 12px;
+  background: #fff; border: 1px solid var(--bd); border-radius: var(--radius);
+  padding: 14px 20px; margin-bottom: 14px; box-shadow: var(--shadow-sm);
+}
+.page-head .ph-icon {
+  width: 42px; height: 42px; border-radius: 11px; flex: none;
+  display: flex; align-items: center; justify-content: center; color: #fff;
+  background: var(--brand-grad);
+  box-shadow: 0 6px 14px rgba(31, 111, 235, .28);
+}
+.page-head .ph-text { flex: 1; }
+.page-head .ph-title { font-size: 17px; font-weight: 700; color: var(--ink); line-height: 1.2; }
+.page-head .ph-sub { font-size: 12.5px; color: var(--muted); margin-top: 3px; }
