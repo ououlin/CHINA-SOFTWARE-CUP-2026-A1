@@ -40,6 +40,25 @@
 
 ---
 
+## 增强功能（国赛强化）
+
+在四大核心能力之上，围绕「设备视角」与「交互/检索深度」扩展了 8 项增强功能：
+
+| # | 功能 | 说明 |
+|---|---|---|
+| G1 | **设备健康档案（一机一档）** | 设备台账 + 报修/维修时间线（精确挂设备）+ 同型号案例与适用 SOP 软关联；报修自动流转设备状态 |
+| G2 | **数据驾驶舱大屏** | 登录首页统计大屏：8 项指标 + 设备状态/高故障设备/知识图谱分布 + 近 7 天问答与报修趋势（ECharts） |
+| G3 | **多轮对话** | 问答带上下文记忆，对「它 / 这个故障」等追问做指代补全后再检索生成 |
+| G4 | **语音问答** | 浏览器原生语音识别（Web Speech API），现场免手输；不支持时降级提示 |
+| G5 | **智能检修报告** | LLM 汇总设备台账与报修时间线，生成结构化《检修报告》，可导出 Markdown |
+| G6 | **故障预警·预测性维护** | 规则化风险评分（可解释）识别高风险设备与高频故障，LLM 生成预测性维护建议 |
+| G7 | **扫码报修·设备二维码** | 为每台设备生成二维码（可打印张贴），摄像头扫码 / 手动输入编号即调档报修 |
+| G8 | **检索重排（RAG 增强）** | 向量召回后做混合重排（语义 + 字面词项重叠），引用卡展示「综合·语义·字面」三分 |
+
+> 全部增强功能均复用既有云端 API / 纯 Python / 前端预编译方案，**不向 LoongArch 引入新的编译风险**。
+
+---
+
 ## 技术栈
 
 | 层 | 技术 | LoongArch / 麒麟可行性 |
@@ -252,19 +271,23 @@ backend/
     embedding/              Embedding provider（local / dashscope）
     vl/                     视觉 provider（Qwen-VL）
     rag/
-      retriever.py          向量检索 + 型号过滤
-      pipeline.py           RAG 编排（检索 → 引用 → 反馈增强 → LLM）
+      retriever.py          向量召回 + 混合重排（语义 + 字面，G8）
+      pipeline.py           RAG 编排（检索 → 引用 → 多轮 → 反馈增强 → LLM）
       multimodal.py         图片 → VL 描述 → 文本检索 → 诊断
       sop_gen.py            依手册生成 SOP 草稿
       kg_extract.py         案例抽取知识图谱实体/关系
       feedback.py           反馈增强：召回相似问题的人工修正
+      report_gen.py         设备检修报告生成（G5）
+      alert_gen.py          预测性维护建议生成（G6）
     ingest.py               PDF / 文本 → 切块 → 向量化 → 入库
     kg_store.py             知识图谱去重 upsert + 关系落库
     routers/                auth / chat / documents / sop / cases / kg / feedback
-    seed.py                 初始化数据（账号 + 种子手册/SOP/案例/图谱）
+                            / devices(G1/G5/G7) / dashboard(G2) / alert(G6)
+    seed.py                 初始化数据（账号 + 手册/SOP/案例/图谱 + 设备台账）
 frontend/
   src/
-    views/                  Login / Chat / Documents / SOP / Cases / Graph / Feedback
+    views/                  Login / Dashboard(G2) / Chat(G3/G4) / Devices(G1/G5)
+                            / Alert(G6) / Scan(G7) / SOP / Cases / Graph / Feedback / Documents
     api.js  store.js  router.js
 deploy/
   deploy.sh                 一键部署（系统依赖→数据库→后端→前端+Nginx）
