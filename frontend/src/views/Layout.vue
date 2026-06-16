@@ -17,6 +17,9 @@
         <el-menu-item index="/devices">
           <el-icon><Monitor /></el-icon><span>设备档案</span>
         </el-menu-item>
+        <el-menu-item index="/alert">
+          <el-icon><WarningFilled /></el-icon><span>故障预警</span>
+        </el-menu-item>
         <el-menu-item index="/sop">
           <el-icon><Tickets /></el-icon><span>作业指引</span>
         </el-menu-item>
