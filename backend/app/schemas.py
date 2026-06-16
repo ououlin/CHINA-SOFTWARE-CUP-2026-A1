@@ -25,9 +25,15 @@ class UserOut(BaseModel):
 
 
 # ---- 问答 ----
+class ChatTurn(BaseModel):
+    role: str          # user / assistant
+    content: str
+
+
 class AskReq(BaseModel):
     query: str
     device_model: Optional[str] = None
+    history: List[ChatTurn] = []   # 多轮上下文（不含本次 query），按时间正序
 
 
 class Citation(BaseModel):

@@ -163,6 +163,12 @@ async function send() {
   const query = input.value.trim()
   if ((!query && !pickedFile.value) || sending.value) return
 
+  // 多轮上下文：取已完成的历史轮次（不含本次），最近 6 条
+  const history = messages.value
+    .filter((m) => (m.role === 'user' || m.role === 'assistant') && m.content && !m.loading)
+    .map((m) => ({ role: m.role, content: m.content }))
+    .slice(-6)
+
   const userMsg = { role: 'user', content: query }
   if (pickedFile.value) userMsg.image = pickedPreview.value
   messages.value.push(userMsg)
@@ -198,7 +204,7 @@ async function send() {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${auth.token}`,
         },
-        body: JSON.stringify({ query, device_model: deviceModel.value || null }),
+        body: JSON.stringify({ query, device_model: deviceModel.value || null, history }),
       })
     }
     if (!resp.ok) {

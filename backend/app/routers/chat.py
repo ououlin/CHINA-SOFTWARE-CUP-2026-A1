@@ -19,7 +19,8 @@ router = APIRouter(prefix="/api/chat", tags=["chat"])
 @router.post("/ask", response_model=AskResp)
 def ask(req: AskReq, db: Session = Depends(get_db),
         user: User = Depends(get_current_user)):
-    result = answer(db, req.query, device_model=req.device_model)
+    result = answer(db, req.query, device_model=req.device_model,
+                    history=[h.model_dump() for h in req.history])
     log = QALog(user_id=user.id, query=req.query, modality="text",
                 answer=result["answer"], citations=result["citations"])
     db.add(log)
@@ -32,8 +33,9 @@ def ask(req: AskReq, db: Session = Depends(get_db),
 def ask_stream(req: AskReq, db: Session = Depends(get_db),
                user: User = Depends(get_current_user)):
     """SSE 流式：citations -> (corrections 若命中反馈增强) -> delta... -> done(含 qa_id)。"""
-    contexts, corrections, gen = answer_stream(db, req.query,
-                                               device_model=req.device_model)
+    contexts, corrections, gen = answer_stream(
+        db, req.query, device_model=req.device_model,
+        history=[h.model_dump() for h in req.history])
 
     def event_stream():
         yield f"event: citations\ndata: {json.dumps(contexts, ensure_ascii=False)}\n\n"
