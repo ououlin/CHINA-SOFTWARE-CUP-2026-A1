@@ -18,13 +18,24 @@
 
     <!-- 指标卡片 -->
     <div class="cards">
-      <div v-for="c in cardDefs" :key="c.key" class="card" :style="{ '--accent': c.color }">
-        <div class="ic"><el-icon :size="22"><component :is="c.icon" /></el-icon></div>
-        <div class="info">
-          <div class="num">{{ cardValue(c) }}</div>
-          <div class="lbl">{{ c.label }}</div>
+      <div v-for="c in cardDefs" :key="c.key" class="card"
+           :class="{ alert: c.alert && Number(cards[c.key]) > 0 }">
+        <div class="card-head">
+          <span class="card-label">{{ c.label }}</span>
+          <el-icon class="card-ic"><component :is="c.icon" /></el-icon>
         </div>
-        <div v-if="c.sub" class="sub">{{ c.sub() }}</div>
+        <div class="card-body">
+          <span class="card-num">{{ cardValue(c) }}</span>
+          <span v-if="c.unit" class="card-unit">{{ c.unit }}</span>
+        </div>
+        <div class="card-foot">
+          <svg v-if="c.spark && trendData" class="spark" viewBox="0 0 100 26" preserveAspectRatio="none">
+            <polyline :points="sparkPoints(c.spark)" fill="none"
+                      :stroke="c.alert ? '#e24b4a' : '#1f6feb'" stroke-width="2"
+                      stroke-linecap="round" stroke-linejoin="round" />
+          </svg>
+          <span v-else-if="c.sub" class="card-sub">{{ c.sub() }}</span>
+        </div>
       </div>
     </div>
 
@@ -87,22 +98,32 @@ const todayStr = computed(() => {
 })
 
 const cardDefs = [
-  { key: 'device_total', label: '设备总数', icon: Monitor, color: '#14418c' },
-  { key: 'open_records', label: '未结报修', icon: Warning, color: '#f56c6c' },
-  { key: 'doc_total', label: '知识库文档', icon: Collection, color: '#409eff' },
-  { key: 'case_total', label: '检修案例', icon: EditPen, color: '#67c23a',
+  { key: 'device_total', label: '设备总数', icon: Monitor, unit: '台',
+    sub: () => `维修中 ${cards.open_records || 0}` },
+  { key: 'open_records', label: '未结报修', icon: Warning, unit: '项', alert: true, spark: 'records' },
+  { key: 'doc_total', label: '知识库文档', icon: Collection, unit: '篇' },
+  { key: 'case_total', label: '检修案例', icon: EditPen, unit: '例',
     sub: () => `待审 ${cards.case_pending || 0}` },
-  { key: 'sop_total', label: '作业指引', icon: Tickets, color: '#e6a23c',
+  { key: 'sop_total', label: '作业指引', icon: Tickets, unit: '套',
     sub: () => `已执行 ${cards.sop_run_total || 0}` },
-  { key: 'qa_total', label: '智能问答', icon: ChatDotRound, color: '#9254de' },
-  { key: 'satisfaction', label: '问答满意度', icon: Star, color: '#13c2c2', pct: true },
-  { key: 'kg_entities', label: '图谱实体', icon: Share, color: '#5ad8a6',
+  { key: 'qa_total', label: '智能问答', icon: ChatDotRound, unit: '次', spark: 'qa' },
+  { key: 'satisfaction', label: '问答满意度', icon: Star, pct: true },
+  { key: 'kg_entities', label: '图谱实体', icon: Share, unit: '个',
     sub: () => `关系 ${cards.kg_relations || 0}` },
 ]
 function cardValue(c) {
   const v = cards[c.key]
   if (c.pct) return v == null ? '—' : v + '%'
   return v ?? 0
+}
+
+const trendData = ref(null)
+function sparkPoints(key) {
+  const arr = trendData.value?.[key] || []
+  if (!arr.length) return ''
+  const max = Math.max(...arr, 1)
+  const n = arr.length
+  return arr.map((v, i) => `${(n === 1 ? 50 : (i / (n - 1)) * 100).toFixed(1)},${(26 - (v / max) * 22 - 2).toFixed(1)}`).join(' ')
 }
 
 const trendEl = ref(null)
@@ -181,6 +202,7 @@ async function load() {
   try {
     const { data } = await api.get('/dashboard/overview')
     Object.assign(cards, data.cards)
+    trendData.value = data.trend
     await nextTick()
     renderTrend(data.trend)
     renderStatus(data.device_status)
@@ -242,23 +264,30 @@ onBeforeUnmount(() => {
 
 .cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
 .card {
-  position: relative; display: flex; align-items: center; gap: 14px;
-  background: #fff; border-radius: 10px; padding: 16px 18px;
-  border: 1px solid #ebeef5; border-left: 4px solid var(--accent);
-  box-shadow: 0 1px 4px rgba(0, 0, 0, .04);
+  background: #fff; border: 1px solid #ebeef5; border-radius: 12px;
+  padding: 15px 18px 13px; transition: all .18s;
+  box-shadow: 0 1px 3px rgba(20, 40, 80, .04);
 }
-.card .ic {
-  width: 46px; height: 46px; border-radius: 12px; display: flex;
-  align-items: center; justify-content: center; color: #fff;
-  background: linear-gradient(135deg, var(--accent), color-mix(in srgb, var(--accent) 62%, #1a1a1a));
-  box-shadow: 0 6px 14px color-mix(in srgb, var(--accent) 32%, transparent);
+.card:hover {
+  transform: translateY(-2px); border-color: #d2ddf2;
+  box-shadow: 0 10px 24px rgba(20, 40, 80, .10);
 }
-.card .num { font-size: 26px; font-weight: 700; color: #1f2d3d; line-height: 1.1; }
-.card .lbl { font-size: 13px; color: #909399; margin-top: 2px; }
-.card .sub {
-  position: absolute; top: 12px; right: 14px; font-size: 12px;
-  color: #a0a4ab; background: #f5f7fa; border-radius: 10px; padding: 1px 8px;
+.card-head { display: flex; align-items: center; justify-content: space-between; }
+.card-label { font-size: 13px; color: #6b7280; }
+.card-ic { color: #c4ccda; font-size: 17px; }
+.card-body { display: flex; align-items: baseline; gap: 4px; margin: 10px 0 8px; }
+.card-num { font-size: 30px; font-weight: 700; color: #1f2329; line-height: 1; letter-spacing: -.6px; }
+.card-unit { font-size: 13px; color: #a0a4ab; }
+.card-foot { height: 22px; display: flex; align-items: center; }
+.card-sub {
+  font-size: 12px; color: #7d8595; background: #f4f6fa;
+  padding: 2px 9px; border-radius: 6px;
 }
+.spark { width: 76px; height: 22px; opacity: .9; }
+.card.alert { border-color: #f1c7c7; background: #fffafa; }
+.card.alert .card-label { color: #c0504a; }
+.card.alert .card-num { color: #e24b4a; }
+.card.alert .card-ic { color: #ec9a9a; }
 .row { margin: 0 !important; }
 .panel {
   background: #fff; border-radius: 10px; padding: 12px 16px 6px;
