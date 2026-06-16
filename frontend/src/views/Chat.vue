@@ -93,6 +93,10 @@
                    :on-change="onPickImage" class="img-upload">
           <el-button :icon="Picture">故障图片</el-button>
         </el-upload>
+        <el-button class="voice-btn" :class="{ rec: listening }" :icon="Microphone"
+                   :type="listening ? 'danger' : ''" @click="toggleVoice">
+          {{ listening ? '聆听中…' : '语音输入' }}
+        </el-button>
       </div>
       <div class="composer-main">
         <div v-if="pickedPreview" class="preview">
@@ -109,10 +113,10 @@
 </template>
 
 <script setup>
-import { ref, nextTick } from 'vue'
+import { ref, nextTick, onBeforeUnmount } from 'vue'
 import { ElMessage } from 'element-plus'
 import {
-  Picture, CircleClose, View, EditPen, MagicStick, CircleCheck,
+  Picture, CircleClose, View, EditPen, MagicStick, CircleCheck, Microphone,
 } from '@element-plus/icons-vue'
 import api from '../api'
 import { useAuthStore } from '../store'
@@ -153,6 +157,60 @@ function clearImage() {
   pickedFile.value = null
   pickedPreview.value = ''
 }
+
+// ---- G4 语音输入（Web Speech API，纯前端）----
+const listening = ref(false)
+const voiceSupported = !!(window.SpeechRecognition || window.webkitSpeechRecognition)
+let recognition = null
+let voiceBase = ''   // 开始录音时输入框已有内容
+
+function initRecognition() {
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition
+  if (!SR) return null
+  const r = new SR()
+  r.lang = 'zh-CN'
+  r.interimResults = true
+  r.continuous = false
+  r.onresult = (e) => {
+    let finalText = ''
+    let interim = ''
+    for (let i = 0; i < e.results.length; i++) {
+      const t = e.results[i][0].transcript
+      if (e.results[i].isFinal) finalText += t
+      else interim += t
+    }
+    input.value = voiceBase + finalText + interim
+  }
+  r.onend = () => { listening.value = false }
+  r.onerror = (ev) => {
+    listening.value = false
+    if (ev.error === 'not-allowed') ElMessage.warning('麦克风权限被拒绝，请在浏览器允许后重试')
+    else if (ev.error !== 'no-speech' && ev.error !== 'aborted') ElMessage.warning('语音识别出错：' + ev.error)
+  }
+  return r
+}
+
+function toggleVoice() {
+  if (!voiceSupported) {
+    ElMessage.warning('当前浏览器不支持语音识别，建议使用 Chrome / Edge')
+    return
+  }
+  if (listening.value) {
+    recognition && recognition.stop()
+    listening.value = false
+    return
+  }
+  if (!recognition) recognition = initRecognition()
+  voiceBase = input.value ? input.value.trimEnd() + ' ' : ''
+  try {
+    recognition.start()
+    listening.value = true
+  } catch (e) { /* start 在已运行时会抛错，忽略 */ }
+}
+
+onBeforeUnmount(() => {
+  if (recognition && listening.value) recognition.abort()
+})
 
 async function scrollBottom() {
   await nextTick()
@@ -379,4 +437,10 @@ async function saveCorrection(m) {
 .composer .el-button { height: 60px; }
 .img-upload :deep(.el-upload) { width: 100%; }
 .img-upload :deep(.el-button) { width: 100%; height: 32px; }
+.composer-left .voice-btn { width: 100%; height: 32px; margin-left: 0; }
+.composer-left .voice-btn.rec { animation: voicePulse 1.1s ease-in-out infinite; }
+@keyframes voicePulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(245, 108, 108, .5); }
+  50% { box-shadow: 0 0 0 6px rgba(245, 108, 108, 0); }
+}
 </style>
