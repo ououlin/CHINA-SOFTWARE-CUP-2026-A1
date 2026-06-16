@@ -129,20 +129,14 @@ npm run dev
 
 ### 部署步骤
 
-**前置：在开发机（Windows）构建前端**
+**第一步：在开发机（Windows）构建前端**
 
 ```powershell
 cd frontend
-npm run build        # 生成 frontend/dist
+npm run build        # 生成 frontend/dist，压缩后上传到服务器
 ```
 
-然后把 `frontend/dist` 传到服务器：
-
-```bash
-scp -r frontend/dist root@<服务器IP>:/opt/device-repair/frontend/
-```
-
-**在服务器（麒麟）上按序执行**
+**第二步：在服务器（麒麟）上准备代码**
 
 ```bash
 # 若未装 git，先装
@@ -151,30 +145,39 @@ sudo dnf install -y git        # 或 sudo yum install -y git
 # clone 代码
 sudo git clone https://github.com/ououlin/CHINA-SOFTWARE-CUP-2026-A1.git /opt/device-repair
 cd /opt/device-repair
-
-# 1. 装系统依赖（python / postgresql / nginx / 编译工具）
-sudo bash deploy/01_install_system_deps.sh
-
-# 2. 依赖冒烟测试（先跑！报告哪些 Python 包有问题）
-bash deploy/00_smoke_test.sh
-
-# 3. 初始化数据库
-sudo DB_PASSWORD='强密码' bash deploy/03_setup_database.sh
-
-# 4. 填写密钥
-cp deploy/.env.production.example backend/.env
-vi backend/.env      # 填 DEEPSEEK_API_KEY / DASHSCOPE_API_KEY / DATABASE_URL / JWT_SECRET
-
-# 5. 部署后端（venv + 依赖 + 种子数据 + systemd 服务）
-sudo bash deploy/04_deploy_backend.sh
-
-# 6. 部署前端 + Nginx（需先放好 frontend/dist）
-sudo bash deploy/05_deploy_frontend.sh
 ```
+
+**第三步：填写密钥**
+
+```bash
+# 生成 .env 模板（首次运行 deploy.sh 也会自动生成并提示）
+cp deploy/.env.production.example backend/.env
+# 编辑填入密钥（无法打字可用 cat tee 方式写入，见下方提示）
+```
+
+需填写的关键字段：
+
+| 字段 | 说明 |
+|---|---|
+| `DEEPSEEK_API_KEY` | DeepSeek 对话 API Key |
+| `DASHSCOPE_API_KEY` | 阿里云百炼 Key（Qwen-VL + Embedding） |
+| `DATABASE_URL` | 演示推荐 `sqlite:////opt/device-repair/backend/app.db` |
+| `JWT_SECRET` | 任意随机字符串 |
+
+**第四步：一键部署**
+
+```bash
+sudo bash deploy/deploy.sh
+```
+
+脚本自动完成：系统依赖安装 → 数据库初始化 → 后端 venv/种子/systemd → Nginx 配置启动。
+
+若运行时提示 `frontend/dist` 不存在，先上传 dist 再重跑一次即可。
 
 完成后访问 `http://<服务器IP>/`。
 
-> **可选**：`sudo bash deploy/02_install_pgvector.sh` 编译安装 pgvector（不装则用内存余弦，演示量够用）。
+> **可选**：`sudo bash deploy/02_install_pgvector.sh` 编译安装 pgvector（不装则用内存余弦，演示量够用）。  
+> **诊断**：`bash deploy/00_smoke_test.sh` 可在部署前评估 Python 依赖兼容性。
 
 ### 排雷手册
 
@@ -264,12 +267,9 @@ frontend/
     views/                  Login / Chat / Documents / SOP / Cases / Graph / Feedback
     api.js  store.js  router.js
 deploy/
-  00_smoke_test.sh          依赖冒烟测试（先跑）
-  01_install_system_deps.sh 系统依赖
-  02_install_pgvector.sh    pgvector（可选）
-  03_setup_database.sh      建库
-  04_deploy_backend.sh      后端 venv + systemd
-  05_deploy_frontend.sh     前端 + Nginx
+  deploy.sh                 一键部署（系统依赖→数据库→后端→前端+Nginx）
+  00_smoke_test.sh          依赖冒烟测试（部署前诊断用）
+  02_install_pgvector.sh    pgvector 编译安装（可选）
   .env.production.example   密钥模板
 samples/
   fault_panel_overheat.png  图片问答演示样例
