@@ -93,10 +93,10 @@ def _retrieval_query(query: str, history: Optional[List[dict]]) -> tuple:
 
 
 def answer(db: Session, query: str, device_model: Optional[str] = None,
-           history: Optional[List[dict]] = None) -> dict:
+           history: Optional[List[dict]] = None, user_id: Optional[int] = None) -> dict:
     search_q, rewritten = _retrieval_query(query, history)
     contexts = retrieve(db, search_q, device_model=device_model)
-    corrections = retrieve_corrections(db, query)
+    corrections = retrieve_corrections(db, query, user_id)
     graph_lines = graph_context(db, search_q, contexts) if settings.graph_rag_enabled else []
     messages = build_messages(query, contexts, corrections, history, graph_lines)
     text = get_llm().chat(messages)
@@ -106,11 +106,12 @@ def answer(db: Session, query: str, device_model: Optional[str] = None,
 
 def answer_stream(db: Session, query: str,
                   device_model: Optional[str] = None,
-                  history: Optional[List[dict]] = None):
+                  history: Optional[List[dict]] = None,
+                  user_id: Optional[int] = None):
     """返回 (contexts, corrections, rewritten_query, graph_lines, 文本流生成器)。"""
     search_q, rewritten = _retrieval_query(query, history)
     contexts = retrieve(db, search_q, device_model=device_model)
-    corrections = retrieve_corrections(db, query)
+    corrections = retrieve_corrections(db, query, user_id)
     graph_lines = graph_context(db, search_q, contexts) if settings.graph_rag_enabled else []
     messages = build_messages(query, contexts, corrections, history, graph_lines)
 

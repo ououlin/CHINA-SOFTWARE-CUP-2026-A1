@@ -14,7 +14,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .llm import get_llm
-from .models import KGEntity
+from .models import Device, KGEntity
 
 _CN_NUM = {
     "零": "0", "〇": "0", "一": "1", "二": "2", "两": "2", "三": "3", "四": "4",
@@ -23,12 +23,17 @@ _CN_NUM = {
 
 
 def normalize_name(name: str) -> str:
-    """规则归一：全角→半角、去空格、去 # 号、中文数字→阿拉伯数字、小写。"""
+    """规则归一：全角→半角、去空格、去 #、中文数字→阿拉伯、去序数"号"、小写。
+
+    去"号"让 "#1泵 / 一号泵 / 1#泵" 这类纯编号写法差异在规则层即可归并
+    （"一号"→"1号"→"1"，"#1"→"1"），减轻对 LLM 语义对齐的依赖。
+    """
     s = unicodedata.normalize("NFKC", name or "").strip().lower()
     s = re.sub(r"\s+", "", s)
     s = s.replace("#", "")
     for cn, ar in _CN_NUM.items():
         s = s.replace(cn, ar)
+    s = re.sub(r"(\d)\s*号", r"\1", s)  # "1号" -> "1"，仅紧跟数字的序数号
     return s
 
 
@@ -36,6 +41,15 @@ def _existing_by_type(db: Session) -> Dict[str, List[str]]:
     out: Dict[str, List[str]] = {}
     for e in db.execute(select(KGEntity)).scalars().all():
         out.setdefault(e.etype, []).append(e.name)
+    # 标准设备台账（G1 一机一档）作为 device 类的权威标准词纳入对齐候选，
+    # 让 "1#循环水泵 / 一号泵" 等随意写法归并到台账标准实体下，避免节点爆炸。
+    std = set()
+    for d in db.execute(select(Device)).scalars().all():
+        for v in (d.device_type, d.device_model, d.name):
+            if v and v.strip():
+                std.add(v.strip())
+    if std:
+        out["device"] = list(set(out.get("device", [])) | std)
     return out
 
 

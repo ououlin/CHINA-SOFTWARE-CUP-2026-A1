@@ -225,6 +225,8 @@ class FeedbackOut(BaseModel):
     correction_text: str
     query: str
     status: str
+    pub_status: str = "published"  # 影子知识库：pending_review/published/rolled_back
+    version: int = 1               # 修正版本号（发布自增，支持回滚）
     user_name: str = ""
     created_at: datetime
 
@@ -235,7 +237,8 @@ class FeedbackOut(BaseModel):
 class FeedbackStats(BaseModel):
     up: int = 0
     down: int = 0
-    corrections: int = 0           # 生效中的纠正条数
+    corrections: int = 0           # 已发布生效的纠正条数
+    pending: int = 0               # 待审核（影子库）纠正条数
 
 
 # ---- 增强 G1 设备健康档案（一机一档）----

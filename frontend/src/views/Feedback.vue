@@ -4,7 +4,8 @@
       <div class="stats">
         <div class="stat"><span class="num up">{{ stats.up }}</span><span class="lbl">👍 有用</span></div>
         <div class="stat"><span class="num down">{{ stats.down }}</span><span class="lbl">👎 没用</span></div>
-        <div class="stat"><span class="num corr">{{ stats.corrections }}</span><span class="lbl">生效修正知识</span></div>
+        <div class="stat"><span class="num corr">{{ stats.corrections }}</span><span class="lbl">已发布生效</span></div>
+        <div class="stat"><span class="num pend">{{ stats.pending }}</span><span class="lbl">待审发布</span></div>
       </div>
       <el-switch v-model="onlyCorr" active-text="仅看含纠正" @change="load" />
     </el-card>
@@ -13,7 +14,7 @@
       <template #header>
         <div class="ch">
           <span>标注与修正记录</span>
-          <span class="hint">采纳的修正会在「智能检修问答」中对相似问题自动生效；可下架不当修正。</span>
+          <span class="hint">影子知识库流控：纠正提交后为「待审核」仅提交者可预览；审核员「发布」后才全局生效，可「回滚」到安全版本。</span>
         </div>
       </template>
       <el-table :data="rows" v-loading="loading" stripe>
@@ -33,22 +34,26 @@
           </template>
         </el-table-column>
         <el-table-column v-if="canManage" prop="user_name" label="反馈人" width="100" />
-        <el-table-column label="状态" width="90">
+        <el-table-column label="状态" width="118">
           <template #default="{ row }">
             <el-tag v-if="!row.correction_text" size="small" effect="plain" type="info">—</el-tag>
-            <el-tag v-else :type="row.status === 'active' ? 'success' : 'info'"
-                    size="small" effect="plain">
-              {{ row.status === 'active' ? '生效' : '已下架' }}
-            </el-tag>
+            <el-tag v-else-if="row.status !== 'active'" size="small" effect="plain" type="info">已下架</el-tag>
+            <el-tag v-else-if="row.pub_status === 'pending_review'" size="small" type="warning">待审核</el-tag>
+            <el-tag v-else-if="row.pub_status === 'published'" size="small" type="success">已发布 v{{ row.version }}</el-tag>
+            <el-tag v-else size="small" effect="plain" type="info">已回滚</el-tag>
           </template>
         </el-table-column>
-        <el-table-column v-if="canManage" label="操作" width="100">
+        <el-table-column v-if="canManage" label="操作" width="158">
           <template #default="{ row }">
             <template v-if="row.correction_text">
-              <el-button v-if="row.status === 'active'" size="small" type="danger" plain
-                         @click="archive(row)">下架</el-button>
-              <el-button v-else size="small" type="success" plain
-                         @click="restore(row)">恢复</el-button>
+              <template v-if="row.status === 'active'">
+                <el-button v-if="row.pub_status !== 'published'" size="small" type="success" plain
+                           @click="publish(row)">发布</el-button>
+                <el-button v-else size="small" type="warning" plain
+                           @click="rollback(row)">回滚</el-button>
+                <el-button size="small" type="danger" plain @click="archive(row)">下架</el-button>
+              </template>
+              <el-button v-else size="small" type="success" plain @click="restore(row)">恢复</el-button>
             </template>
           </template>
         </el-table-column>
@@ -69,7 +74,7 @@ const canManage = computed(() => ['auditor', 'admin'].includes(auth.user?.role))
 const rows = ref([])
 const loading = ref(false)
 const onlyCorr = ref(true)
-const stats = reactive({ up: 0, down: 0, corrections: 0 })
+const stats = reactive({ up: 0, down: 0, corrections: 0, pending: 0 })
 
 async function load() {
   loading.value = true
@@ -99,10 +104,28 @@ async function archive(row) {
 async function restore(row) {
   try {
     await api.post(`/feedback/${row.id}/restore`)
-    ElMessage.success('已恢复生效')
+    ElMessage.success('已恢复')
     await load()
   } catch (e) {
     ElMessage.error('操作失败')
+  }
+}
+async function publish(row) {
+  try {
+    await api.post(`/feedback/${row.id}/publish`)
+    ElMessage.success('已正式发布，进入全局 RAG 生效')
+    await load()
+  } catch (e) {
+    ElMessage.error(e.response?.data?.detail || '发布失败')
+  }
+}
+async function rollback(row) {
+  try {
+    await api.post(`/feedback/${row.id}/rollback`)
+    ElMessage.success('已回滚，退出全局生效')
+    await load()
+  } catch (e) {
+    ElMessage.error(e.response?.data?.detail || '回滚失败')
   }
 }
 
@@ -120,6 +143,7 @@ onMounted(load)
 .stat .num.up { color: #67c23a; }
 .stat .num.down { color: #f56c6c; }
 .stat .num.corr { color: #14418c; }
+.stat .num.pend { color: #e6a23c; }
 .stat .lbl { font-size: 12px; color: #909399; margin-top: 2px; }
 .ch { display: flex; align-items: baseline; gap: 12px; }
 .ch .hint { font-size: 12px; color: #909399; font-weight: normal; }

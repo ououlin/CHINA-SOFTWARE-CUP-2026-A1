@@ -29,7 +29,13 @@
               </template>
             </el-table-column>
             <el-table-column prop="score" label="评分" width="62" align="center" />
-            <el-table-column prop="reason" label="风险说明" min-width="180" show-overflow-tooltip />
+            <el-table-column prop="reason" label="风险说明" min-width="160" show-overflow-tooltip />
+            <el-table-column v-if="canManage" label="操作" width="84">
+              <template #default="{ row }">
+                <el-button size="small" type="primary" plain :loading="dispatching === row.id"
+                           @click="dispatch(row)">派单</el-button>
+              </template>
+            </el-table-column>
           </el-table>
           <el-empty v-if="!riskDevices.length" description="暂无风险数据" :image-size="56" />
         </div>
@@ -66,17 +72,36 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted, onBeforeUnmount, nextTick } from 'vue'
+import { ref, reactive, computed, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { ElMessage } from 'element-plus'
 import { MagicStick, Download, WarningFilled, Warning, CircleCheck } from '@element-plus/icons-vue'
 import * as echarts from 'echarts'
 import api from '../api'
+import { useAuthStore } from '../store'
+
+const auth = useAuthStore()
+const canManage = computed(() => ['auditor', 'admin'].includes(auth.user?.role))
 
 const loading = ref(false)
 const riskDevices = ref([])
 const summary = reactive({ high: 0, medium: 0, low: 0 })
 const faultEl = ref(null)
 let chart = null
+
+const dispatching = ref(0)
+async function dispatch(row) {
+  dispatching.value = row.id
+  try {
+    const { data } = await api.post(`/alert/dispatch/${row.id}`)
+    ElMessage.success(data.matched
+      ? `已为「${data.device}」派单，匹配作业指引：${data.sop_name}`
+      : `已为「${data.device}」生成预防性检修任务（未匹配到 SOP，可后续补充）`)
+  } catch (e) {
+    ElMessage.error(e.response?.data?.detail || '派单失败')
+  } finally {
+    dispatching.value = 0
+  }
+}
 
 const levelType = (l) => ({ 高: 'danger', 中: 'warning', 低: 'info' }[l] || 'info')
 

@@ -10,9 +10,10 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ..auth import get_current_user
+from ..audit_log import record_audit
+from ..auth import get_current_user, require_roles
 from ..db import get_db
-from ..models import Device, User
+from ..models import Device, MaintenanceRecord, SOPTemplate, User
 from ..rag.alert_gen import generate_maintenance_advice
 
 router = APIRouter(prefix="/api/alert", tags=["alert"])
@@ -101,3 +102,40 @@ def advice(db: Session = Depends(get_db),
     except Exception as e:
         raise HTTPException(503, f"建议生成失败（请检查大模型配置）：{e}")
     return {"advice": text}
+
+
+@router.post("/dispatch/{device_id}")
+def dispatch(device_id: int, db: Session = Depends(get_db),
+             user: User = Depends(require_roles("auditor", "admin"))):
+    """闭环动作（G6→M3）：为高风险设备一键生成预防性检修派单。
+
+    自动匹配该设备类型已发布的 SOP 模板，并在设备上创建一条「预防性维护」报修任务
+    （进入设备检修队列，可由一线按作业指引执行），实现"预警→派单→作业"闭环。
+    """
+    d = db.get(Device, device_id)
+    if not d:
+        raise HTTPException(404, "设备不存在")
+
+    sop = db.execute(
+        select(SOPTemplate)
+        .where(SOPTemplate.status == "approved", SOPTemplate.device_type == d.device_type)
+        .order_by(SOPTemplate.id.desc())
+    ).scalars().first()
+
+    title = f"预防性维护：{sop.name}" if sop else "预防性维护检修"
+    rec = MaintenanceRecord(
+        device_id=d.id, title=title,
+        fault_desc="故障预警系统依风险评分自动派单，建议按匹配的标准作业指引执行预防性检修。",
+        severity="general", status="open", reporter_id=user.id,
+    )
+    db.add(rec)
+    if d.status == "normal":
+        d.status = "repairing"
+    record_audit(db, user, "alert.dispatch", "device", d.id, title)
+    db.commit()
+    db.refresh(rec)
+    return {
+        "ok": True, "record_id": rec.id, "device": d.name, "device_code": d.code,
+        "sop_id": sop.id if sop else None, "sop_name": sop.name if sop else "",
+        "matched": bool(sop),
+    }

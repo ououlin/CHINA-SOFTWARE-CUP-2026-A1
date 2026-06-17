@@ -35,9 +35,7 @@
           </div>
 
           <div v-if="m.role === 'user'" class="content">{{ m.content }}</div>
-          <div v-else-if="m.streaming" class="content typing">{{ m.content || '正在思考…' }}<span class="type-cursor"></span></div>
-          <div v-else class="content markdown-body" v-html="renderMarkdown(m.content)"
-               @click="onCiteClick($event, m)"></div>
+          <div v-else class="content" :class="{ typing: m.streaming }">{{ m.content || (m.loading ? '正在思考…' : '') }}<span v-if="m.streaming" class="type-cursor"></span></div>
 
           <div v-if="m.rewritten" class="rewrite-hint">
             <el-icon><Search /></el-icon>
@@ -145,7 +143,7 @@
 
 <script setup>
 import { ref, nextTick, onBeforeUnmount } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   Picture, CircleClose, View, EditPen, MagicStick, CircleCheck, Microphone, Search, Share,
 } from '@element-plus/icons-vue'
@@ -320,9 +318,20 @@ async function send() {
       })
     }
     if (!resp.ok) {
-      let detail = '请求失败'
-      try { detail = (await resp.json()).detail || detail } catch (e) {}
-      throw new Error(detail)
+      let body = null
+      try { body = await resp.json() } catch (e) {}
+      const detail = body && body.detail
+      // 故障图片双重校验被拦截：弹窗警告，不当作普通错误
+      if (detail && typeof detail === 'object' && detail.reject) {
+        assistant.loading = false
+        assistant.streaming = false
+        assistant.content = `⚠️ ${detail.message}（识别置信度 ${detail.confidence}）`
+        ElMessageBox.alert(detail.message, '图片未通过校验', {
+          type: 'warning', confirmButtonText: '重新拍摄',
+        }).catch(() => {})
+        return
+      }
+      throw new Error((detail && (detail.message || detail)) || '请求失败')
     }
 
     const reader = resp.body.getReader()
@@ -444,6 +453,17 @@ async function saveCorrection(m) {
   white-space: pre-wrap; line-height: 1.7; word-break: break-word;
 }
 .msg.user .content { background: #e3f0ff; }
+.type-cursor {
+  display: inline-block; width: 7px; height: 15px; margin-left: 2px;
+  background: #1f6feb; vertical-align: -2px; border-radius: 1px;
+  animation: cursorBlink 1s steps(1) infinite;
+}
+@keyframes cursorBlink { 0%, 50% { opacity: 1; } 50.01%, 100% { opacity: 0; } }
+.corr-badge { animation: corrBreath 2.2s ease-in-out infinite; }
+@keyframes corrBreath {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(230, 162, 60, .5); }
+  50% { box-shadow: 0 0 7px 2px rgba(230, 162, 60, .35); }
+}
 
 /* 打字机：流式光标 */
 .content.typing { display: block; }

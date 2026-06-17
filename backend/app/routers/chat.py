@@ -11,7 +11,9 @@ from ..db import get_db
 from ..models import QALog, User
 from ..ratelimit import rate_limit
 from ..rag.pipeline import answer, answer_stream
-from ..rag.multimodal import answer_image_stream
+from ..rag.multimodal import (
+    analyze_image, guard_image, answer_image_stream, ImageRejected,
+)
 from ..schemas import AskReq, AskResp
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
@@ -21,7 +23,7 @@ router = APIRouter(prefix="/api/chat", tags=["chat"])
 def ask(req: AskReq, db: Session = Depends(get_db),
         user: User = Depends(rate_limit("chat", "rate_limit_chat"))):
     result = answer(db, req.query, device_model=req.device_model,
-                    history=[h.model_dump() for h in req.history])
+                    history=[h.model_dump() for h in req.history], user_id=user.id)
     log = QALog(user_id=user.id, query=req.query, modality="text",
                 answer=result["answer"], citations=result["citations"])
     db.add(log)
@@ -36,7 +38,7 @@ def ask_stream(req: AskReq, db: Session = Depends(get_db),
     """SSE 流式：citations -> (corrections 若命中反馈增强) -> delta... -> done(含 qa_id)。"""
     contexts, corrections, rewritten, graph, gen = answer_stream(
         db, req.query, device_model=req.device_model,
-        history=[h.model_dump() for h in req.history])
+        history=[h.model_dump() for h in req.history], user_id=user.id)
 
     def event_stream():
         if rewritten:
@@ -88,12 +90,24 @@ async def ask_image(
         raise HTTPException(status_code=400, detail="图片为空")
 
     try:
-        image_desc, contexts, gen = answer_image_stream(
-            db, image_bytes, user_text=query, device_model=device_model, mime=mime,
-        )
+        analysis = analyze_image(image_bytes, mime=mime)
     except RuntimeError as e:
         # 多为未配置 DASHSCOPE_API_KEY
         raise HTTPException(status_code=503, detail=str(e))
+
+    # 双重校验：非设备故障图 / 置信度过低 -> 422 拦截，不进入检索与生成
+    try:
+        guard_image(analysis)
+    except ImageRejected as e:
+        raise HTTPException(
+            status_code=422,
+            detail={"reject": True, "message": str(e), "confidence": e.confidence},
+        )
+
+    image_desc = analysis["description"]
+    contexts, gen = answer_image_stream(
+        db, image_desc, user_text=query, device_model=device_model,
+    )
 
     def event_stream():
         yield f"event: vl\ndata: {json.dumps(image_desc, ensure_ascii=False)}\n\n"

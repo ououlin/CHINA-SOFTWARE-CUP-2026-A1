@@ -199,6 +199,9 @@ class LLMFeedback(Base):
     # 纠正所针对问题的向量（开发期 JSON；生产 pgvector），用于相似问题召回
     query_embedding = Column(JSON, nullable=True)
     status = Column(String(16), default="active")  # active 生效 / archived 已下架
+    # 影子知识库发布流控：pending_review 待审(仅提交者预览) / published 已发布(全局注入) / rolled_back 已回滚
+    pub_status = Column(String(16), default="pending_review")
+    version = Column(Integer, default=1)            # 修正版本号，正式发布时自增，支持回滚
     created_at = Column(DateTime, default=_now)
     updated_at = Column(DateTime, default=_now, onupdate=_now)
 

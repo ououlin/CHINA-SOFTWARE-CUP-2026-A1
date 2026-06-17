@@ -5,7 +5,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import PlainTextResponse
 
-from .db import Base, engine
+from .db import Base, engine, ensure_schema
 from . import models  # noqa: F401  确保模型注册到 Base
 from .metrics import record_request, render
 from .routers import (
@@ -44,6 +44,7 @@ async def metrics_middleware(request: Request, call_next):
 @app.on_event("startup")
 def on_startup():
     Base.metadata.create_all(bind=engine)
+    ensure_schema()  # 轻量迁移：为旧库补齐影子知识库 pub_status / version 列
 
 
 @app.get("/api/health")

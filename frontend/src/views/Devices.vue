@@ -186,6 +186,8 @@
       </div>
       <template #footer>
         <el-button @click="reportDocDialog = false">关闭</el-button>
+        <el-button type="success" plain :icon="Collection" :loading="archivingCase"
+                   :disabled="!reportDocText" @click="archiveReportAsCase">归档为案例</el-button>
         <el-button type="primary" :icon="Download" :disabled="!reportDocText"
                    @click="downloadReportDoc">下载 Markdown</el-button>
       </template>
@@ -196,7 +198,7 @@
 <script setup>
 import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, View, Warning, Delete, Document, Tickets, Download } from '@element-plus/icons-vue'
+import { Plus, View, Warning, Delete, Document, Tickets, Download, Collection } from '@element-plus/icons-vue'
 import api from '../api'
 import { useAuthStore } from '../store'
 
@@ -400,6 +402,27 @@ function downloadReportDoc() {
   a.download = `检修报告_${reportDocMeta.code || 'device'}_${today}.md`
   a.click()
   URL.revokeObjectURL(url)
+}
+
+// 闭环动作（G5→M4）：把检修报告归档为待审核案例，反哺知识沉淀
+const archivingCase = ref(false)
+async function archiveReportAsCase() {
+  if (!reportDocText.value || !current.value) return
+  archivingCase.value = true
+  try {
+    await api.post('/cases', {
+      title: `检修报告归档：${current.value.name}`,
+      device_type: current.value.device_type || '',
+      device_model: current.value.device_model || '',
+      content: reportDocText.value,
+    })
+    ElMessage.success('已归档并投递到「知识沉淀」待审核队列')
+    reportDocDialog.value = false
+  } catch (e) {
+    ElMessage.error(e.response?.data?.detail || '归档失败')
+  } finally {
+    archivingCase.value = false
+  }
 }
 
 onMounted(load)

@@ -27,8 +27,9 @@ def _out(f: LLMFeedback, names: dict) -> FeedbackOut:
     return FeedbackOut(
         id=f.id, qa_id=f.qa_id, vote=f.vote or "",
         correction_text=f.correction_text or "", query=f.query or "",
-        status=f.status, user_name=names.get(f.user_id, ""),
-        created_at=f.created_at,
+        status=f.status, pub_status=getattr(f, "pub_status", "published"),
+        version=getattr(f, "version", 1) or 1,
+        user_name=names.get(f.user_id, ""), created_at=f.created_at,
     )
 
 
@@ -64,6 +65,9 @@ def submit_feedback(body: FeedbackIn, db: Session = Depends(get_db),
         fb.correction_text = corr
         # 维护"纠正问题"向量：有纠正则嵌入原问题供反馈增强召回，清除则置空
         fb.query_embedding = get_embedder().embed_one(qa.query) if corr else None
+        # 影子知识库：新提交/修改的纠正先进入待审，仅提交者本人预览，不污染全局
+        if corr:
+            fb.pub_status = "pending_review"
 
     db.commit()
     db.refresh(fb)
@@ -94,9 +98,11 @@ def feedback_stats(db: Session = Depends(get_db),
     rows = db.execute(select(LLMFeedback)).scalars().all()
     up = sum(1 for f in rows if f.vote == "up")
     down = sum(1 for f in rows if f.vote == "down")
-    corrections = sum(1 for f in rows
-                      if f.correction_text and f.status == "active")
-    return FeedbackStats(up=up, down=down, corrections=corrections)
+    corrections = sum(1 for f in rows if f.correction_text and f.status == "active"
+                      and getattr(f, "pub_status", "published") == "published")
+    pending = sum(1 for f in rows if f.correction_text and f.status == "active"
+                  and getattr(f, "pub_status", "published") == "pending_review")
+    return FeedbackStats(up=up, down=down, corrections=corrections, pending=pending)
 
 
 @router.post("/{fid}/archive", response_model=FeedbackOut)
@@ -124,6 +130,40 @@ def restore_feedback(fid: int, db: Session = Depends(get_db),
     f.status = "active"
     record_audit(db, user, "feedback.restore", "feedback", f.id,
                  f"恢复修正知识 #{f.id}")
+    db.commit()
+    db.refresh(f)
+    return _out(f, _names(db))
+
+
+@router.post("/{fid}/publish", response_model=FeedbackOut)
+def publish_feedback(fid: int, db: Session = Depends(get_db),
+                     user: User = Depends(require_roles(*_EDITOR_ROLES))):
+    """影子知识库正式发布：待审纠正经审核后进入全局 RAG 高优先注入池，版本号自增。"""
+    f = db.get(LLMFeedback, fid)
+    if not f:
+        raise HTTPException(404, "反馈不存在")
+    if not (f.correction_text or "").strip():
+        raise HTTPException(400, "该反馈无纠正内容，无法发布")
+    f.pub_status = "published"
+    f.status = "active"
+    f.version = (getattr(f, "version", 1) or 1) + 1
+    record_audit(db, user, "feedback.publish", "feedback", f.id,
+                 f"正式发布修正知识 #{f.id}（v{f.version}），进入全局生效")
+    db.commit()
+    db.refresh(f)
+    return _out(f, _names(db))
+
+
+@router.post("/{fid}/rollback", response_model=FeedbackOut)
+def rollback_feedback(fid: int, db: Session = Depends(get_db),
+                      user: User = Depends(require_roles(*_EDITOR_ROLES))):
+    """一键回滚：把已发布的修正退出全局注入池（置 rolled_back），防范批量错误标注。"""
+    f = db.get(LLMFeedback, fid)
+    if not f:
+        raise HTTPException(404, "反馈不存在")
+    f.pub_status = "rolled_back"
+    record_audit(db, user, "feedback.rollback", "feedback", f.id,
+                 f"回滚修正知识 #{f.id}（退出全局生效，回到安全版本）")
     db.commit()
     db.refresh(f)
     return _out(f, _names(db))

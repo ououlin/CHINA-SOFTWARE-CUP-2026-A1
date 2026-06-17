@@ -20,17 +20,31 @@ CORRECTION_TOP_K = 2
 def retrieve_corrections(
     db: Session,
     query: str,
+    user_id: Optional[int] = None,
     top_k: int = CORRECTION_TOP_K,
     threshold: float = CORRECTION_THRESHOLD,
 ) -> List[dict]:
-    """返回与 query 最相似的若干生效中人工修正（按相似度降序，过阈值）。"""
+    """返回与 query 最相似的生效人工修正（影子知识库流控）。
+
+    全局只注入 pub_status=published 的修正；提交者本人额外可见自己 pending_review
+    的修正（用于"自己纠错实时预览"），不影响他人，防范错误/恶意标注污染全局。
+    """
     rows = db.execute(
         select(LLMFeedback).where(
             LLMFeedback.status == "active",
             LLMFeedback.correction_text != "",
         )
     ).scalars().all()
-    rows = [r for r in rows if r.query_embedding]
+
+    def _visible(r) -> bool:
+        ps = getattr(r, "pub_status", "published")
+        if ps == "published":
+            return True
+        if user_id and ps == "pending_review" and r.user_id == user_id:
+            return True
+        return False
+
+    rows = [r for r in rows if r.query_embedding and _visible(r)]
     if not rows:
         return []
 

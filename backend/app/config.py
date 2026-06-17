@@ -58,5 +58,9 @@ class Settings(BaseSettings):
     # 局域网 Ollama/vLLM（OpenAI 兼容），Embedding 切本地 fastembed，均只改 .env
     offline_mode: bool = False
 
+    # ---- 故障图片双重校验（安全拦截）----
+    # VL 判定为非工业故障 / 置信度低于阈值时，拦截不走后续检索，避免"一本正经胡编"
+    image_confidence_threshold: float = 0.6
+
 
 settings = Settings()
