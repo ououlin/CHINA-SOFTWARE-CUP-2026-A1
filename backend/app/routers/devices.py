@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 
 from ..auth import get_current_user, require_roles
 from ..db import get_db
+from ..rag.report_gen import generate_device_report
 from ..models import (
     Device, MaintenanceRecord, RepairCase, SOPTemplate, User,
 )
@@ -242,3 +243,39 @@ def handle_record(rid: int, body: MaintenanceRecordHandle,
     db.commit()
     db.refresh(r)
     return _record_out(r, _names(db))
+
+
+# ---- 智能检修报告（增强 G5）----
+
+_STATUS_CN = {"normal": "运行中", "repairing": "维修中", "stopped": "停机", "scrapped": "报废"}
+_SEV_CN = {"general": "一般", "serious": "严重", "urgent": "紧急"}
+_REC_CN = {"open": "待处理", "processing": "处理中", "done": "已完成"}
+
+
+@router.post("/{did}/report")
+def device_report(did: int, db: Session = Depends(get_db),
+                  user: User = Depends(get_current_user)):
+    """生成《设备检修报告》：LLM 汇总设备台账 + 报修时间线，返回 Markdown。"""
+    d = db.get(Device, did)
+    if not d:
+        raise HTTPException(404, "设备不存在")
+
+    device = {
+        "code": d.code, "name": d.name, "device_type": d.device_type,
+        "device_model": d.device_model, "location": d.location,
+        "status": _STATUS_CN.get(d.status, d.status),
+        "commissioned": d.commissioned_at.strftime("%Y-%m-%d") if d.commissioned_at else "",
+    }
+    # 时间正序（旧→新）便于汇总
+    records = [{
+        "title": r.title, "fault": r.fault_desc, "handling": r.handling,
+        "severity": _SEV_CN.get(r.severity, r.severity),
+        "status": _REC_CN.get(r.status, r.status),
+        "created": r.created_at.strftime("%Y-%m-%d") if r.created_at else "",
+    } for r in reversed(d.records)]
+
+    try:
+        report = generate_device_report(device, records)
+    except Exception as e:
+        raise HTTPException(503, f"报告生成失败（请检查大模型配置）：{e}")
+    return {"device": d.name, "code": d.code, "report": report}
