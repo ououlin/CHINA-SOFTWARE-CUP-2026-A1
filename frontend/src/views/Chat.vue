@@ -36,6 +36,11 @@
 
           <div class="content" v-text="m.content || (m.loading ? '正在思考…' : '')"></div>
 
+          <div v-if="m.rewritten" class="rewrite-hint">
+            <el-icon><Search /></el-icon>
+            <span>已按工业术语优化检索：{{ m.rewritten }}</span>
+          </div>
+
           <el-collapse v-if="m.vl" class="vl-box">
             <el-collapse-item>
               <template #title>
@@ -44,6 +49,15 @@
               <div class="vl-content">{{ m.vl }}</div>
             </el-collapse-item>
           </el-collapse>
+
+          <div v-if="m.graph && m.graph.length" class="graph-box">
+            <div class="graph-title">
+              <el-icon><Share /></el-icon>&nbsp;知识图谱关联（Graph RAG · {{ m.graph.length }} 条）
+            </div>
+            <div class="graph-rels">
+              <span v-for="(g, gi) in m.graph" :key="gi" class="graph-rel">{{ g }}</span>
+            </div>
+          </div>
 
           <div v-if="m.citations && m.citations.length" class="citations">
             <div class="cite-title">参考来源 · 混合重排</div>
@@ -117,7 +131,7 @@
 import { ref, nextTick, onBeforeUnmount } from 'vue'
 import { ElMessage } from 'element-plus'
 import {
-  Picture, CircleClose, View, EditPen, MagicStick, CircleCheck, Microphone,
+  Picture, CircleClose, View, EditPen, MagicStick, CircleCheck, Microphone, Search, Share,
 } from '@element-plus/icons-vue'
 import api from '../api'
 import { useAuthStore } from '../store'
@@ -233,7 +247,7 @@ async function send() {
   messages.value.push(userMsg)
 
   const assistant = {
-    role: 'assistant', content: '', citations: [], vl: '', loading: true,
+    role: 'assistant', content: '', citations: [], vl: '', rewritten: '', graph: [], loading: true,
     qaId: null, appliedCorrections: [], vote: '',
     feedbackOpen: false, correctionText: '', feedbackSaved: false, saving: false,
   }
@@ -306,6 +320,10 @@ function handleEvent(block, assistant) {
   try {
     if (event === 'vl') {
       assistant.vl = JSON.parse(data)
+    } else if (event === 'rewrite') {
+      assistant.rewritten = JSON.parse(data)
+    } else if (event === 'graph') {
+      assistant.graph = JSON.parse(data)
     } else if (event === 'citations') {
       assistant.citations = JSON.parse(data)
     } else if (event === 'corrections') {
@@ -313,6 +331,9 @@ function handleEvent(block, assistant) {
     } else if (event === 'delta') {
       assistant.loading = false
       assistant.content += JSON.parse(data)
+    } else if (event === 'error') {
+      assistant.loading = false
+      assistant.content += `\n\n⚠️ ${JSON.parse(data)}`
     } else if (event === 'done') {
       const d = JSON.parse(data)
       if (d && d.qa_id) assistant.qaId = d.qa_id
@@ -383,6 +404,21 @@ async function saveCorrection(m) {
   white-space: pre-wrap; line-height: 1.7; word-break: break-word;
 }
 .msg.user .content { background: #e3f0ff; }
+.rewrite-hint {
+  display: flex; align-items: center; gap: 5px; margin-top: 8px;
+  font-size: 12px; color: #45627f; background: #eef3fb;
+  border: 1px solid #dce7f7; border-radius: 6px; padding: 5px 10px;
+}
+.graph-box {
+  margin-top: 10px; background: #f4f0fb; border: 1px solid #e4d9f5;
+  border-radius: 8px; padding: 10px 12px;
+}
+.graph-title { font-size: 12px; color: #7c5bbf; display: flex; align-items: center; margin-bottom: 8px; }
+.graph-rels { display: flex; flex-wrap: wrap; gap: 6px; }
+.graph-rel {
+  font-size: 12px; color: #5b4196; background: #fff;
+  border: 1px solid #e4d9f5; border-radius: 12px; padding: 3px 10px;
+}
 .vl-box { margin-top: 8px; border-radius: 8px; }
 .vl-content { color: #606266; line-height: 1.7; white-space: pre-wrap; }
 .citations {

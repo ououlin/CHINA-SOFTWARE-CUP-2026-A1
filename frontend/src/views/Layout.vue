@@ -38,6 +38,9 @@
         <el-menu-item index="/documents">
           <el-icon><Collection /></el-icon><span>知识库</span>
         </el-menu-item>
+        <el-menu-item v-if="canManage" index="/audit">
+          <el-icon><Document /></el-icon><span>操作审计</span>
+        </el-menu-item>
       </el-menu>
     </el-aside>
 
@@ -85,6 +88,7 @@ const currentDesc = computed(() => route.meta.desc || '')
 const roleLabel = computed(() => ({
   worker: '一线人员', auditor: '审核员', admin: '管理员',
 }[auth.user?.role] || ''))
+const canManage = computed(() => ['auditor', 'admin'].includes(auth.user?.role))
 
 function onCommand(cmd) {
   if (cmd === 'logout') {

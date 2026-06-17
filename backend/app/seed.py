@@ -279,7 +279,7 @@ def run():
                     source_type="case", status="approved",
                 )
                 case.doc_id = doc.id
-                persist_extraction(db, case.id, sc["kg"])
+                persist_extraction(db, case.id, sc["kg"], align=False)
                 db.commit()
             # 1 条待审核案例
             db.add(RepairCase(
@@ -329,6 +329,25 @@ def run():
             print(f"种子设备台账已写入（{dev_count} 台设备 + {rec_count} 条报修记录）。")
         else:
             print("种子设备已存在，跳过。")
+
+        # --- 种子审计日志（进阶，仅首次）：还原种子操作的审计痕迹，开箱即演示 ---
+        from .models import AuditLog
+        if not db.execute(select(AuditLog)).first():
+            au = db.execute(select(User).where(User.username == "auditor")).scalar_one()
+            ad = db.execute(select(User).where(User.username == "admin")).scalar_one()
+            seed_audits = [
+                (ad, "sop.create", "sop", "新建并发布作业流程「摩托车发动机二级维护标准作业流程」"),
+                (au, "case.approve", "case", "采纳案例「怠速不稳故障检修案例」并入库、抽取知识图谱"),
+                (au, "case.approve", "case", "采纳案例「发动机过热故障检修案例」并入库、抽取知识图谱"),
+                (ad, "device.create", "device", "设备建档「本田 CG125 教学台架发动机」（MTO-2301）"),
+            ]
+            for u, action, ttype, detail in seed_audits:
+                db.add(AuditLog(user_id=u.id, username=u.display_name,
+                                action=action, target_type=ttype, detail=detail))
+            db.commit()
+            print(f"种子审计日志已写入（{len(seed_audits)} 条）。")
+        else:
+            print("种子审计日志已存在，跳过。")
 
         print("初始化完成。账号：worker/worker123, auditor/auditor123, admin/admin123")
     finally:

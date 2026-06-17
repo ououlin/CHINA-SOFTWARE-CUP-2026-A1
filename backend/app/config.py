@@ -43,6 +43,20 @@ class Settings(BaseSettings):
 
     # ---- 检索 ----
     retrieve_top_k: int = 4
+    query_rewrite_enabled: bool = True   # 进阶：检索前把口语 query 改写为工业术语
+    graph_rag_enabled: bool = True       # 进阶：Graph RAG，注入知识图谱邻居作结构化上下文
+    parent_child_enabled: bool = True    # 进阶：父子分块，召回子块、喂模型父块上下文
+    parent_window: int = 1               # 父块向同文档相邻各扩展的块数
+
+    # ---- 接口限流（进阶，保护云端 API 额度）----
+    rate_limit_enabled: bool = True
+    rate_limit_chat: int = 20            # 每用户每分钟问答次数（审核员/管理员 ×3）
+    rate_limit_upload: int = 10          # 每用户每分钟图片/上传次数（审核员/管理员 ×3）
+
+    # ---- 离线/局域网模式（进阶预案）----
+    # 标识离线部署；LLM/VL 实际切换由 deepseek_base_url / dashscope_base_url 指向
+    # 局域网 Ollama/vLLM（OpenAI 兼容），Embedding 切本地 fastembed，均只改 .env
+    offline_mode: bool = False
 
 
 settings = Settings()

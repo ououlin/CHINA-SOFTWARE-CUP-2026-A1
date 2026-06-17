@@ -13,6 +13,7 @@ import Devices from './views/Devices.vue'
 import Dashboard from './views/Dashboard.vue'
 import Alert from './views/Alert.vue'
 import Scan from './views/Scan.vue'
+import Audit from './views/Audit.vue'
 
 const routes = [
   { path: '/login', component: Login, meta: { public: true } },
@@ -31,6 +32,7 @@ const routes = [
       { path: 'graph', component: Graph, meta: { title: '知识图谱', desc: '设备 / 部件 / 故障 / 原因 / 措施关系网络' } },
       { path: 'feedback', component: Feedback, meta: { title: '标注与修正', desc: '满意度统计 · 人工修正知识治理' } },
       { path: 'documents', component: Documents, meta: { title: '知识库', desc: '检修手册与案例文档管理' } },
+      { path: 'audit', component: Audit, meta: { title: '操作审计日志', desc: '安全生产关键操作流水 · 审核员/管理员可查' } },
     ],
   },
 ]

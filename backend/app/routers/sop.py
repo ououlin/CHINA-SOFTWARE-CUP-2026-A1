@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from ..audit_log import record_audit
 from ..auth import get_current_user, require_roles
 from ..db import get_db
 from ..models import SOPRun, SOPStep, SOPTemplate, User
@@ -96,6 +97,7 @@ def create_template(body: SOPTemplateIn, db: Session = Depends(get_db),
             instruction=s.instruction, risk=s.risk, tools=s.tools,
             is_required=1 if s.is_required else 0, checkpoint=s.checkpoint,
         ))
+    record_audit(db, user, "sop.create", "sop", t.id, f"新建并发布作业流程「{t.name}」")
     db.commit()
     db.refresh(t)
     return _detail(t)
@@ -141,6 +143,7 @@ def publish_template(tid: int, db: Session = Depends(get_db),
     if not t:
         raise HTTPException(404, "模板不存在")
     t.status = "approved"
+    record_audit(db, user, "sop.publish", "sop", t.id, f"发布作业流程「{t.name}」")
     db.commit()
     db.refresh(t)
     return _detail(t)
@@ -152,6 +155,7 @@ def delete_template(tid: int, db: Session = Depends(get_db),
     t = db.get(SOPTemplate, tid)
     if not t:
         raise HTTPException(404, "模板不存在")
+    record_audit(db, user, "sop.delete", "sop", t.id, f"删除作业流程「{t.name}」")
     db.delete(t)
     db.commit()
     return {"ok": True}

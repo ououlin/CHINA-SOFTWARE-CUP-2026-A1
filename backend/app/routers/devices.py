@@ -11,6 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select, func
 from sqlalchemy.orm import Session
 
+from ..audit_log import record_audit
 from ..auth import get_current_user, require_roles
 from ..db import get_db
 from ..rag.report_gen import generate_device_report
@@ -151,6 +152,9 @@ def create_device(body: DeviceIn, db: Session = Depends(get_db),
         commissioned_at=body.commissioned_at, note=body.note,
     )
     db.add(d)
+    db.flush()
+    record_audit(db, user, "device.create", "device", d.id,
+                 f"设备建档「{d.name}」（{d.code}）")
     db.commit()
     db.refresh(d)
     return _detail(db, d)
@@ -187,6 +191,8 @@ def delete_device(did: int, db: Session = Depends(get_db),
     d = db.get(Device, did)
     if not d:
         raise HTTPException(404, "设备不存在")
+    record_audit(db, user, "device.delete", "device", d.id,
+                 f"删除设备「{d.name}」（{d.code}）")
     db.delete(d)  # 级联删除其报修记录
     db.commit()
     return {"ok": True}
@@ -228,6 +234,8 @@ def handle_record(rid: int, body: MaintenanceRecordHandle,
     r.status = body.status if body.status in ("processing", "done") else "done"
     if r.status == "done":
         r.done_at = dt.datetime.utcnow()
+    record_audit(db, user, "device.repair_handle", "device", r.device_id,
+                 f"处理报修「{r.title}」→ {r.status}")
     db.flush()
 
     # 该设备无未结报修则恢复运行中

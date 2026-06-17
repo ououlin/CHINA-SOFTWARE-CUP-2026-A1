@@ -7,6 +7,7 @@ from typing import Dict, List, Tuple
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from .kg_align import align_extraction
 from .models import KGEntity, KGRelation
 
 
@@ -24,13 +25,21 @@ def upsert_entity(db: Session, name: str, etype: str) -> KGEntity:
 
 
 def persist_extraction(
-    db: Session, case_id: int, extracted: Dict[str, List[dict]]
+    db: Session, case_id: int, extracted: Dict[str, List[dict]], align: bool = True
 ) -> Tuple[int, int]:
-    """把抽取结果落库；返回 (实体数, 关系数)。调用方负责 commit。"""
+    """把抽取结果落库；返回 (实体数, 关系数)。调用方负责 commit。
+
+    align=True 时先做实体对齐消歧（把别名归一到已有标准节点）；
+    种子手工 KG 已规范，传 align=False 跳过对齐、保持离线可种。
+    """
+    entities = extracted.get("entities", [])
+    align_map = align_extraction(db, entities) if align else {}
+
     name_to_id: Dict[str, int] = {}
-    for ent in extracted.get("entities", []):
-        e = upsert_entity(db, ent["name"], ent["etype"])
-        name_to_id[ent["name"]] = e.id
+    for ent in entities:
+        std_name = align_map.get(ent["name"], ent["name"])  # 对齐后的标准名
+        e = upsert_entity(db, std_name, ent["etype"])
+        name_to_id[ent["name"]] = e.id  # 原名→标准节点 id，供关系连边
 
     rel_count = 0
     for r in extracted.get("relations", []):

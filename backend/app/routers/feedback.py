@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from ..audit_log import record_audit
 from ..auth import get_current_user, require_roles
 from ..db import get_db
 from ..embedding import get_embedder
@@ -106,6 +107,8 @@ def archive_feedback(fid: int, db: Session = Depends(get_db),
     if not f:
         raise HTTPException(404, "反馈不存在")
     f.status = "archived"
+    record_audit(db, user, "feedback.archive", "feedback", f.id,
+                 f"下架修正知识 #{f.id}（移出反馈增强闭环）")
     db.commit()
     db.refresh(f)
     return _out(f, _names(db))
@@ -119,6 +122,8 @@ def restore_feedback(fid: int, db: Session = Depends(get_db),
     if not f:
         raise HTTPException(404, "反馈不存在")
     f.status = "active"
+    record_audit(db, user, "feedback.restore", "feedback", f.id,
+                 f"恢复修正知识 #{f.id}")
     db.commit()
     db.refresh(f)
     return _out(f, _names(db))

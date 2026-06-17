@@ -219,6 +219,19 @@ sudo setsebool -P httpd_can_network_connect 1
 
 **应急：先用 SQLite 跑通** → 把 `backend/.env` 改 `DATABASE_URL=sqlite:///./app.db`，重跑 `04`。
 
+### 离线 / 保密局域网部署预案
+
+针对"保密车间无外网 HTTPS"场景，系统全部 provider 已抽象，切换为全离线只改 `.env`、不改代码：
+
+| 组件 | 离线方案 | 配置 |
+|---|---|---|
+| 对话 LLM | 局域网 Ollama / vLLM 部署的本地模型（OpenAI 兼容） | `DEEPSEEK_BASE_URL=http://<内网IP>:11434/v1`、`DEEPSEEK_MODEL=qwen2.5` |
+| 多模态 VL | 局域网部署的本地 Qwen-VL（OpenAI 兼容） | `DASHSCOPE_BASE_URL=http://<内网IP>:.../v1`、`DASHSCOPE_VL_MODEL=...` |
+| Embedding | 本地 `fastembed`（开发期默认即用，纯离线） | `EMBEDDING_PROVIDER=local`；LoongArch 上 onnxruntime 装不上时见下 |
+| 标识 | `OFFLINE_MODE=true`（部署标识） | 业务代码无差异 |
+
+> LoongArch 上 `fastembed` 依赖的 `onnxruntime` 若无法编译：①在局域网另备一台 x86/ARM 服务器跑 embedding 微服务，本系统 `EMBEDDING_PROVIDER=dashscope` 指向其内网地址；②或参考龙芯社区 `onnxruntime` 源码编译指南现场编译。**核心链路（向量检索 + 内存余弦）本身纯 Python，不依赖外网。**
+
 ### 验证
 
 ```bash

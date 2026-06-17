@@ -61,6 +61,8 @@ class AskResp(BaseModel):
     citations: List[Citation]
     qa_id: Optional[int] = None
     corrections: List[AppliedCorrection] = []
+    rewritten_query: Optional[str] = None   # 进阶：查询改写结果（口语→工业术语）
+    graph: List[str] = []                   # 进阶：Graph RAG 注入的图谱关联三元组
 
 
 # ---- 文档 ----
@@ -304,3 +306,17 @@ class DeviceDetail(DeviceBrief):
     records: List[MaintenanceRecordOut] = []      # 检修时间线（精确）
     linked_cases: List[DeviceLinkedCase] = []     # 同型号检修案例（软关联）
     linked_sops: List[DeviceLinkedSOP] = []       # 适用作业指引（软关联）
+
+
+# ---- 进阶：操作审计日志 ----
+class AuditOut(BaseModel):
+    id: int
+    username: str
+    action: str
+    target_type: str
+    target_id: Optional[int] = None
+    detail: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True

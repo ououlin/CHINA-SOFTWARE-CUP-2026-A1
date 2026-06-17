@@ -9,6 +9,7 @@
 """
 import math
 import re
+import time
 from typing import List, Optional
 
 from sqlalchemy import select
@@ -16,6 +17,7 @@ from sqlalchemy.orm import Session
 
 from ..config import settings
 from ..embedding import get_embedder
+from ..metrics import observe
 from ..models import DocChunk, Document
 
 # 重排融合权重与召回倍数
@@ -55,12 +57,30 @@ def _lexical(q_terms: set, content: str) -> float:
     return inter / len(q_terms)
 
 
+def _parent_content(db: Session, doc_id: int, chunk_id: int, window: int) -> Optional[str]:
+    """父子分块：取同文档相邻 window 个块拼成父上下文（召回子块、喂模型父块）。"""
+    sibs = db.execute(
+        select(DocChunk.id, DocChunk.content)
+        .where(DocChunk.doc_id == doc_id)
+        .order_by(DocChunk.page, DocChunk.id)
+    ).all()
+    ids = [s[0] for s in sibs]
+    if chunk_id not in ids:
+        return None
+    i = ids.index(chunk_id)
+    lo, hi = max(0, i - window), min(len(sibs), i + window + 1)
+    if hi - lo <= 1:
+        return None  # 文档仅一块，无父上下文可扩展
+    return "\n".join(s[1] for s in sibs[lo:hi])
+
+
 def retrieve(
     db: Session,
     query: str,
     device_model: Optional[str] = None,
     top_k: Optional[int] = None,
 ) -> List[dict]:
+    _t0 = time.perf_counter()
     top_k = top_k or settings.retrieve_top_k
     recall_k = max(top_k * _RECALL_MULT, _RECALL_MIN)
     qvec = get_embedder().embed_one(query)
@@ -93,15 +113,22 @@ def retrieve(
 
     results = []
     for final, vec, lex, chunk, doc in reranked[:top_k]:
-        results.append({
+        item = {
             "chunk_id": chunk.id,
             "doc_id": doc.id,
             "doc_title": doc.title,
             "device_model": doc.device_model,
             "page": chunk.page,
-            "content": chunk.content,
+            "content": chunk.content,        # 精确子块，用于引用展示
             "score": round(float(final), 4),
             "vec_score": round(float(vec), 4),
             "lex_score": round(float(lex), 4),
-        })
+        }
+        if settings.parent_child_enabled:
+            pc = _parent_content(db, doc.id, chunk.id, settings.parent_window)
+            if pc and pc != chunk.content:
+                item["parent_content"] = pc  # 父块上下文，喂模型用
+        results.append(item)
+
+    observe("rag_retrieve", time.perf_counter() - _t0)
     return results

@@ -250,3 +250,21 @@ class MaintenanceRecord(Base):
     done_at = Column(DateTime, nullable=True)
 
     device = relationship("Device", back_populates="records")
+
+
+# ============ 进阶：操作审计日志 ============
+
+class AuditLog(Base):
+    """操作审计（进阶）：记录安全生产相关的关键操作——谁在何时对什么做了什么。
+    覆盖案例审核、SOP 发布/删除、修正知识下架/恢复、设备建档/删除/报修处理。
+    """
+    __tablename__ = "audit_logs"
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    username = Column(String(64), default="")        # 冗余操作人名，便于审计展示
+    action = Column(String(64), nullable=False, index=True)  # 如 case.approve / sop.publish
+    target_type = Column(String(32), default="")     # case / sop / feedback / device
+    target_id = Column(Integer, nullable=True)
+    detail = Column(Text, default="")                # 操作简述
+    created_at = Column(DateTime, default=_now, index=True)

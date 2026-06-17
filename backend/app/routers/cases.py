@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from ..audit_log import record_audit
 from ..auth import get_current_user, require_roles
 from ..db import get_db
 from ..ingest import ingest_text
@@ -115,6 +116,7 @@ def review_case(cid: int, body: CaseReviewReq, db: Session = Depends(get_db),
         c.review_note = body.note or ""
         c.reviewed_by = user.id
         c.reviewed_at = dt.datetime.utcnow()
+        record_audit(db, user, "case.reject", "case", c.id, f"退回案例「{c.title}」")
         db.commit()
         db.refresh(c)
         return _detail(db, c, _names(db))
@@ -147,6 +149,8 @@ def review_case(cid: int, body: CaseReviewReq, db: Session = Depends(get_db),
     c.reviewed_by = user.id
     c.reviewed_at = dt.datetime.utcnow()
     c.doc_id = doc.id
+    record_audit(db, user, "case.approve", "case", c.id,
+                 f"采纳案例「{c.title}」并入库、抽取知识图谱")
     db.commit()
     db.refresh(c)
     return _detail(db, c, _names(db))
