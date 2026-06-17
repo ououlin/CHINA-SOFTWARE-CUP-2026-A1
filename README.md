@@ -293,5 +293,4 @@ deploy/
   .env.production.example   密钥模板
 samples/
   fault_panel_overheat.png  图片问答演示样例
-项目技术方案与整体规划.md    设计与选型详述（含 LoongArch 可行性分析）
 ```
