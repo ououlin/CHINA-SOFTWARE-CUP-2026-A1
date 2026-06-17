@@ -49,6 +49,7 @@ logs/
 # ===== IDE / 编辑器 =====
 .vscode/
 .idea/
+.claude/
 *.swp
 *.swo
 
