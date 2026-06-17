@@ -177,9 +177,12 @@
 
     <!-- 智能检修报告 -->
     <el-dialog v-model="reportDocDialog" title="设备检修报告（AI 生成）" width="700px" top="6vh">
-      <div v-loading="reportDocLoading" element-loading-text="大模型正在汇总检修报告……"
-           class="report-wrap">
-        <div class="report-md">{{ reportDocText }}</div>
+      <div class="report-wrap">
+        <div v-if="reportDocLoading" class="report-skeleton">
+          <div class="rs-note">大模型正在汇总检修报告……</div>
+          <el-skeleton :rows="9" animated />
+        </div>
+        <div v-else class="report-md">{{ reportDocText }}</div>
       </div>
       <template #footer>
         <el-button @click="reportDocDialog = false">关闭</el-button>
@@ -416,6 +419,13 @@ onMounted(load)
 .overview .lbl { font-size: 12px; color: #909399; }
 .overview .acts { margin-left: auto; display: flex; gap: 8px; }
 .report-wrap { min-height: 180px; max-height: 60vh; overflow-y: auto; }
+.report-skeleton { padding: 4px 2px; }
+.rs-note { color: #1f6feb; font-size: 13px; margin-bottom: 14px; display: flex; align-items: center; gap: 6px; }
+.rs-note::before {
+  content: ''; width: 8px; height: 8px; border-radius: 50%; background: #1f6feb;
+  animation: rsPulse 1s ease-in-out infinite;
+}
+@keyframes rsPulse { 0%, 100% { opacity: .3; } 50% { opacity: 1; } }
 .report-md {
   white-space: pre-wrap; line-height: 1.75; color: #303133; font-size: 14px;
   padding: 4px 2px;

@@ -108,10 +108,27 @@ def overview(db: Session = Depends(get_db),
         "records": [rec_map.get(str(d), 0) for d in days],
     }
 
+    # ---- 最新报修动态（无缝滚动 ticker）----
+    _SEV = {"general": "一般", "serious": "严重", "urgent": "紧急"}
+    _RST = {"open": "待处理", "processing": "处理中", "done": "已完成"}
+    recent_rows = db.execute(
+        select(MaintenanceRecord, Device.name)
+        .join(Device, MaintenanceRecord.device_id == Device.id)
+        .order_by(MaintenanceRecord.id.desc())
+        .limit(8)
+    ).all()
+    recent_records = [{
+        "device": name, "title": r.title,
+        "severity": _SEV.get(r.severity, r.severity),
+        "status": _RST.get(r.status, r.status),
+        "time": r.created_at.strftime("%m-%d %H:%M") if r.created_at else "",
+    } for r, name in recent_rows]
+
     return {
         "cards": cards,
         "device_status": device_status,
         "fault_top": fault_top,
         "kg_dist": kg_dist,
         "trend": trend,
+        "recent_records": recent_records,
     }

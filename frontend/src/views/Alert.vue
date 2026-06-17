@@ -54,7 +54,10 @@
           </el-button>
         </div>
       </div>
-      <div v-if="adviceLoading" class="adv-loading">大模型正在分析风险并生成维护建议……</div>
+      <div v-if="adviceLoading" class="adv-skeleton">
+        <div class="rs-note">大模型正在分析风险并生成维护建议……</div>
+        <el-skeleton :rows="6" animated />
+      </div>
       <el-empty v-else-if="!adviceText" :image-size="66"
                 description="点击「生成建议」由大模型基于风险数据给出预测性维护方案" />
       <div v-else class="advice-md">{{ adviceText }}</div>
@@ -183,7 +186,16 @@ onBeforeUnmount(() => {
 .advice-panel { min-height: 120px; }
 .ptitle-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
 .adv-acts { display: flex; align-items: center; gap: 4px; }
-.adv-loading { color: #909399; padding: 24px; text-align: center; }
+.adv-skeleton { padding: 6px 2px; }
+.adv-skeleton .rs-note {
+  color: #1f6feb; font-size: 13px; margin-bottom: 14px;
+  display: flex; align-items: center; gap: 6px;
+}
+.adv-skeleton .rs-note::before {
+  content: ''; width: 8px; height: 8px; border-radius: 50%; background: #1f6feb;
+  animation: rsPulse 1s ease-in-out infinite;
+}
+@keyframes rsPulse { 0%, 100% { opacity: .3; } 50% { opacity: 1; } }
 .advice-md {
   white-space: pre-wrap; line-height: 1.75; color: #303133; font-size: 14px;
   padding: 4px 2px; max-height: 50vh; overflow-y: auto;

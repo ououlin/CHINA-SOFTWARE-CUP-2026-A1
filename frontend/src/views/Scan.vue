@@ -6,7 +6,14 @@
           <div class="ptitle">扫码 / 输入编号报修</div>
           <el-tabs v-model="mode" @tab-change="onTabChange">
             <el-tab-pane label="摄像头扫码" name="camera">
-              <div v-show="scanning" id="qr-reader" class="qr-reader"></div>
+              <div v-show="scanning" class="scan-stage">
+                <div id="qr-reader" class="qr-reader"></div>
+                <div class="scan-overlay">
+                  <span class="corner tl"></span><span class="corner tr"></span>
+                  <span class="corner bl"></span><span class="corner br"></span>
+                  <div class="laser"></div>
+                </div>
+              </div>
               <div class="scan-acts">
                 <el-button v-if="!scanning" type="primary" :icon="VideoCamera"
                            @click="startScan">启动摄像头扫码</el-button>
@@ -221,7 +228,23 @@ onBeforeUnmount(stopScan)
   content: ''; display: inline-block; width: 3px; height: 13px;
   background: #14418c; border-radius: 2px; margin-right: 7px; vertical-align: -1px;
 }
-.qr-reader { width: 100%; max-width: 320px; margin: 0 auto 10px; }
+.scan-stage { position: relative; width: 100%; max-width: 320px; margin: 0 auto 10px; }
+.qr-reader { width: 100%; }
+.scan-overlay { position: absolute; inset: 0; pointer-events: none; overflow: hidden; border-radius: 8px; }
+.scan-overlay .corner { position: absolute; width: 22px; height: 22px; border: 3px solid #00e676; }
+.corner.tl { top: 8px; left: 8px; border-right: none; border-bottom: none; }
+.corner.tr { top: 8px; right: 8px; border-left: none; border-bottom: none; }
+.corner.bl { bottom: 8px; left: 8px; border-right: none; border-top: none; }
+.corner.br { bottom: 8px; right: 8px; border-left: none; border-top: none; }
+.laser {
+  position: absolute; left: 8px; right: 8px; height: 2px;
+  background: linear-gradient(90deg, transparent, #00e676, transparent);
+  box-shadow: 0 0 10px 2px rgba(0, 230, 118, .7);
+  animation: laserScan 2.2s ease-in-out infinite;
+}
+@keyframes laserScan {
+  0% { top: 10%; } 50% { top: 90%; } 100% { top: 10%; }
+}
 .scan-acts { margin: 10px 0 6px; }
 .found { margin-top: 6px; }
 .dev-meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }

@@ -13,8 +13,12 @@
       </div>
     </el-card>
 
-    <div class="graph-wrap" v-loading="loading">
+    <div class="graph-wrap">
       <div ref="chartEl" class="chart"></div>
+      <div v-if="loading" class="graph-skeleton">
+        <div class="gs-radar"></div>
+        <span>正在加载知识图谱…</span>
+      </div>
       <el-empty v-if="!loading && nodes.length === 0" class="empty"
                 description="暂无知识图谱，请先在「检修案例」中采纳案例" />
     </div>
@@ -195,6 +199,25 @@ onBeforeUnmount(() => {
 }
 .chart { width: 100%; height: 100%; min-height: 520px; }
 .empty { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
+.graph-skeleton {
+  position: absolute; inset: 0; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 16px; color: #909399; font-size: 13px;
+}
+.gs-radar {
+  width: 90px; height: 90px; border-radius: 50%;
+  border: 2px solid rgba(31, 111, 235, .25);
+  position: relative;
+}
+.gs-radar::before, .gs-radar::after {
+  content: ''; position: absolute; inset: 0; border-radius: 50%;
+  border: 2px solid rgba(31, 111, 235, .5);
+  animation: radarPulse 1.8s ease-out infinite;
+}
+.gs-radar::after { animation-delay: .9s; }
+@keyframes radarPulse {
+  0% { transform: scale(.4); opacity: 1; }
+  100% { transform: scale(1.25); opacity: 0; }
+}
 .dh { display: flex; align-items: center; gap: 10px; }
 .dname { font-size: 16px; font-weight: 600; }
 .node-detail { padding: 2px 4px; }

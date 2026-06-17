@@ -20,7 +20,7 @@
 
           <div v-if="m.appliedCorrections && m.appliedCorrections.length"
                class="applied-corr">
-            <el-tag type="warning" size="small" effect="dark">
+            <el-tag type="warning" size="small" effect="dark" class="corr-badge">
               <el-icon><MagicStick /></el-icon>&nbsp;本回答已采纳
               {{ m.appliedCorrections.length }} 条人工修正知识
             </el-tag>
@@ -34,7 +34,10 @@
             </el-collapse>
           </div>
 
-          <div class="content" v-text="m.content || (m.loading ? '正在思考…' : '')"></div>
+          <div v-if="m.role === 'user'" class="content">{{ m.content }}</div>
+          <div v-else-if="m.streaming" class="content typing">{{ m.content || '正在思考…' }}<span class="type-cursor"></span></div>
+          <div v-else class="content markdown-body" v-html="renderMarkdown(m.content)"
+               @click="onCiteClick($event, m)"></div>
 
           <div v-if="m.rewritten" class="rewrite-hint">
             <el-icon><Search /></el-icon>
@@ -61,13 +64,23 @@
 
           <div v-if="m.citations && m.citations.length" class="citations">
             <div class="cite-title">参考来源 · 混合重排</div>
-            <div v-for="(c, idx) in m.citations" :key="idx" class="cite">
-              <el-tag size="small" type="primary" effect="plain">[{{ idx + 1 }}]</el-tag>
-              <span class="cite-src">{{ c.doc_title }}{{ c.page ? ` · 第${c.page}页` : '' }}</span>
-              <el-tag size="small" type="info" effect="plain">综合 {{ c.score }}</el-tag>
-              <span v-if="c.vec_score !== undefined" class="rerank-sub">
-                语义 {{ c.vec_score }} · 字面 {{ c.lex_score }}
-              </span>
+            <div v-for="(c, idx) in m.citations" :key="idx" class="cite"
+                 :class="{ 'cite-hl': m.highlightCite === idx + 1 }">
+              <div class="cite-head">
+                <el-tag size="small" type="primary" effect="plain">[{{ idx + 1 }}]</el-tag>
+                <span class="cite-src">{{ c.doc_title }}{{ c.page ? ` · 第${c.page}页` : '' }}</span>
+                <div v-if="c.vec_score !== undefined" class="cite-scores">
+                  <span class="sc-comp">综合 {{ c.score }}</span>
+                  <span class="mini" title="语义相似度">
+                    <i class="lbl">语义</i>
+                    <span class="bar"><b :style="{ width: pct(c.vec_score), background: '#3b82f6' }"></b></span>
+                  </span>
+                  <span class="mini" title="字面词项重叠">
+                    <i class="lbl">字面</i>
+                    <span class="bar"><b :style="{ width: pct(c.lex_score), background: '#22c55e' }"></b></span>
+                  </span>
+                </div>
+              </div>
               <div class="cite-content">{{ c.content }}</div>
             </div>
           </div>
@@ -108,9 +121,12 @@
                    :on-change="onPickImage" class="img-upload">
           <el-button :icon="Picture">故障图片</el-button>
         </el-upload>
-        <el-button class="voice-btn" :class="{ rec: listening }" :icon="Microphone"
+        <el-button class="voice-btn" :class="{ rec: listening }"
                    :type="listening ? 'danger' : ''" @click="toggleVoice">
-          {{ listening ? '聆听中…' : '语音输入' }}
+          <template v-if="!listening">
+            <el-icon><Microphone /></el-icon>&nbsp;语音输入
+          </template>
+          <span v-else class="wave"><i></i><i></i><i></i><i></i><i></i></span>
         </el-button>
       </div>
       <div class="composer-main">
@@ -133,8 +149,30 @@ import { ElMessage } from 'element-plus'
 import {
   Picture, CircleClose, View, EditPen, MagicStick, CircleCheck, Microphone, Search, Share,
 } from '@element-plus/icons-vue'
+import { marked } from 'marked'
+import DOMPurify from 'dompurify'
 import api from '../api'
 import { useAuthStore } from '../store'
+
+marked.setOptions({ breaks: true, gfm: true })
+
+function renderMarkdown(text) {
+  if (!text) return ''
+  const html = DOMPurify.sanitize(marked.parse(text))
+  // 句末引用标记 [1][2] 转为可点击锚点（点击高亮对应来源卡片）
+  return html.replace(/\[(\d{1,2})\]/g, '<span class="cite-ref" data-idx="$1">[$1]</span>')
+}
+
+const pct = (v) => `${Math.round((v || 0) * 100)}%`
+
+function onCiteClick(e, m) {
+  const ref = e.target.closest('.cite-ref')
+  if (!ref) return
+  const idx = parseInt(ref.dataset.idx, 10)
+  if (!idx || !m.citations || idx > m.citations.length) return
+  m.highlightCite = idx
+  setTimeout(() => { if (m.highlightCite === idx) m.highlightCite = 0 }, 1600)
+}
 
 const auth = useAuthStore()
 const messages = ref([])
@@ -247,7 +285,8 @@ async function send() {
   messages.value.push(userMsg)
 
   const assistant = {
-    role: 'assistant', content: '', citations: [], vl: '', rewritten: '', graph: [], loading: true,
+    role: 'assistant', content: '', citations: [], vl: '', rewritten: '', graph: [],
+    loading: true, streaming: true, highlightCite: 0,
     qaId: null, appliedCorrections: [], vote: '',
     feedbackOpen: false, correctionText: '', feedbackSaved: false, saving: false,
   }
@@ -303,6 +342,7 @@ async function send() {
     ElMessage.error(e.message)
   } finally {
     assistant.loading = false
+    assistant.streaming = false
     sending.value = false
     await scrollBottom()
   }
@@ -404,6 +444,56 @@ async function saveCorrection(m) {
   white-space: pre-wrap; line-height: 1.7; word-break: break-word;
 }
 .msg.user .content { background: #e3f0ff; }
+
+/* 打字机：流式光标 */
+.content.typing { display: block; }
+.type-cursor {
+  display: inline-block; width: 7px; height: 16px; margin-left: 2px;
+  background: #1f6feb; border-radius: 1px; vertical-align: -3px;
+  animation: blink 1s steps(2, start) infinite;
+}
+@keyframes blink { 50% { opacity: 0; } }
+
+/* Markdown 渲染样式（完成后渐显，避免逐字 reflow 抖动）*/
+.markdown-body {
+  background: #f2f6fc; padding: 12px 16px; border-radius: 10px;
+  line-height: 1.75; word-break: break-word; color: #1f2329;
+  animation: mdFade .35s ease;
+}
+@keyframes mdFade { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: none; } }
+.markdown-body :deep(p) { margin: 6px 0; }
+.markdown-body :deep(h1),
+.markdown-body :deep(h2),
+.markdown-body :deep(h3) { margin: 12px 0 6px; font-weight: 700; line-height: 1.4; }
+.markdown-body :deep(h3) { font-size: 15px; }
+.markdown-body :deep(ul),
+.markdown-body :deep(ol) { padding-left: 22px; margin: 6px 0; }
+.markdown-body :deep(li) { margin: 3px 0; }
+.markdown-body :deep(strong) { color: #0f3270; }
+.markdown-body :deep(code) {
+  background: #e7ecf3; color: #c7254e; padding: 1px 6px;
+  border-radius: 5px; font-size: 13px;
+}
+.markdown-body :deep(pre) {
+  background: #1e1e1e; color: #e6e6e6; padding: 12px 14px;
+  border-radius: 8px; overflow-x: auto; margin: 8px 0;
+}
+.markdown-body :deep(pre code) { background: none; color: #e6e6e6; padding: 0; }
+.markdown-body :deep(blockquote) {
+  margin: 8px 0; padding: 6px 12px; color: #5a6677;
+  background: #eaeef5; border-left: 4px solid #1f6feb; border-radius: 0 6px 6px 0;
+}
+.markdown-body :deep(table) { border-collapse: collapse; margin: 8px 0; }
+.markdown-body :deep(th),
+.markdown-body :deep(td) { border: 1px solid #dfe3ea; padding: 5px 10px; }
+.markdown-body :deep(th) { background: #eef1f6; }
+
+/* M5 修正横幅：呼吸灯 Badge */
+.corr-badge { animation: breathe 2.4s ease-in-out infinite; }
+@keyframes breathe {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(230, 162, 60, .5); }
+  50% { box-shadow: 0 0 0 5px rgba(230, 162, 60, 0); }
+}
 .rewrite-hint {
   display: flex; align-items: center; gap: 5px; margin-top: 8px;
   font-size: 12px; color: #45627f; background: #eef3fb;
@@ -426,10 +516,34 @@ async function saveCorrection(m) {
   border-radius: 8px; padding: 10px 12px;
 }
 .cite-title { font-size: 12px; color: #8a8f99; margin-bottom: 8px; }
-.cite { margin-bottom: 10px; font-size: 13px; }
-.cite-src { margin: 0 6px; color: #14418c; }
-.rerank-sub { margin-left: 6px; font-size: 12px; color: #909399; }
-.cite-content { color: #606266; margin-top: 4px; line-height: 1.6; }
+.cite {
+  margin-bottom: 8px; font-size: 13px; padding: 8px 10px; border-radius: 8px;
+  border: 1px solid transparent; transition: background .4s, border-color .4s;
+}
+.cite-hl { animation: citeFlash 1.6s ease-out; }
+@keyframes citeFlash {
+  0% { background: #fff7d6; border-color: #f6c945; }
+  100% { background: transparent; border-color: transparent; }
+}
+.cite-head { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.cite-src { color: #14418c; flex: 1; min-width: 120px; }
+.cite-scores { display: flex; align-items: center; gap: 10px; }
+.sc-comp {
+  font-size: 12px; font-weight: 600; color: #1f2329;
+  background: #eef1f6; border-radius: 5px; padding: 1px 7px;
+}
+.cite-scores .mini { display: flex; align-items: center; gap: 4px; }
+.cite-scores .lbl { font-size: 11px; color: #9aa0ab; font-style: normal; }
+.cite-scores .bar {
+  width: 46px; height: 6px; border-radius: 3px; background: #edf0f4; overflow: hidden;
+}
+.cite-scores .bar b { display: block; height: 100%; border-radius: 3px; transition: width .5s ease; }
+.cite-content { color: #606266; margin-top: 5px; line-height: 1.6; }
+.cite-ref {
+  color: #1f6feb; cursor: pointer; font-weight: 600;
+  padding: 0 1px; border-radius: 3px; transition: background .15s;
+}
+.cite-ref:hover { background: #dbe9ff; }
 
 /* M5 反馈增强：采纳的人工修正 */
 .applied-corr { margin-bottom: 8px; }
@@ -480,5 +594,19 @@ async function saveCorrection(m) {
 @keyframes voicePulse {
   0%, 100% { box-shadow: 0 0 0 0 rgba(245, 108, 108, .5); }
   50% { box-shadow: 0 0 0 6px rgba(245, 108, 108, 0); }
+}
+.wave { display: inline-flex; align-items: center; gap: 3px; height: 16px; }
+.wave i {
+  width: 3px; height: 100%; border-radius: 2px; background: #fff;
+  animation: wave 0.9s ease-in-out infinite;
+}
+.wave i:nth-child(1) { animation-delay: 0s; }
+.wave i:nth-child(2) { animation-delay: .15s; }
+.wave i:nth-child(3) { animation-delay: .3s; }
+.wave i:nth-child(4) { animation-delay: .45s; }
+.wave i:nth-child(5) { animation-delay: .6s; }
+@keyframes wave {
+  0%, 100% { transform: scaleY(.35); }
+  50% { transform: scaleY(1); }
 }
 </style>

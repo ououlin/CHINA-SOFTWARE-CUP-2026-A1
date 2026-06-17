@@ -114,6 +114,77 @@
       </template>
     </el-drawer>
 
+    <!-- 沉浸式作业模式（全屏分步） -->
+    <el-dialog v-model="immersive" fullscreen :show-close="false" class="immersive-dlg"
+               :close-on-click-modal="false" :close-on-press-escape="false">
+      <div v-if="current && currentStep" class="imm">
+        <div class="imm-top">
+          <div class="imm-name">{{ current.name }}</div>
+          <div class="imm-dots">
+            <span v-for="(s, idx) in current.steps" :key="s.id" class="dot"
+                  :class="{ done: idx < active, cur: idx === active }"></span>
+          </div>
+          <el-button text :icon="Close" @click="quitImmersive">退出</el-button>
+        </div>
+
+        <div class="imm-body">
+          <div class="imm-main">
+            <div class="imm-stepno">STEP {{ active + 1 }} / {{ current.steps.length }}</div>
+            <h2 class="imm-steptitle">
+              {{ currentStep.title }}
+              <el-tag v-if="currentStep.is_required" type="danger" effect="dark">★ 合规必检</el-tag>
+            </h2>
+            <p class="imm-instruction">{{ currentStep.instruction }}</p>
+
+            <div v-if="currentStep.risk" class="imm-risk">
+              <el-icon><WarnTriangleFilled /></el-icon>
+              <span>风险提示：{{ currentStep.risk }}</span>
+            </div>
+
+            <div v-if="currentStep.tools" class="imm-tools">
+              <span class="lbl">所需工具</span>
+              <el-tag v-for="tool in splitTools(currentStep.tools)" :key="tool" effect="plain" size="large">
+                {{ tool }}
+              </el-tag>
+            </div>
+
+            <div v-if="currentStep.is_required" class="imm-check"
+                 :class="{ checked: checked[currentStep.id] }"
+                 @click="checked[currentStep.id] = !checked[currentStep.id]">
+              <div class="imm-checkbox"><el-icon v-if="checked[currentStep.id]"><Check /></el-icon></div>
+              <div class="imm-check-text">
+                <div class="cc-label">合规确认 · 勾选后方可进入下一步</div>
+                <div class="cc-cp">{{ currentStep.checkpoint || '已按要求完成本步骤' }}</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="imm-assist">
+            <div class="ia-head"><el-icon><Service /></el-icon>&nbsp;检修小助手</div>
+            <div class="ia-msgs">
+              <div v-if="iaLoading" class="ia-loading"><el-skeleton :rows="4" animated /></div>
+              <div v-else-if="iaAnswer" class="ia-answer markdown-body" v-html="renderMd(iaAnswer)"></div>
+              <div v-else class="ia-hint">针对本步骤有疑问？直接提问，例如「这一步的标准值是多少」「有什么注意事项」。</div>
+            </div>
+            <div class="ia-input">
+              <el-input v-model="iaQuery" size="small" placeholder="就这一步提问…"
+                        @keyup.enter="askAssist" />
+              <el-button type="primary" size="small" :loading="iaLoading" @click="askAssist">问</el-button>
+            </div>
+          </div>
+        </div>
+
+        <div class="imm-foot">
+          <span class="imm-progress">第 {{ active + 1 }} / {{ current.steps.length }} 步</span>
+          <el-button size="large" :disabled="active === 0" @click="active--">上一步</el-button>
+          <el-button v-if="active < current.steps.length - 1" size="large" type="primary"
+                     :disabled="!canNext" @click="next">下一步</el-button>
+          <el-button v-else size="large" type="success" :loading="submitting"
+                     :disabled="!allRequiredChecked" @click="finish">完成作业</el-button>
+        </div>
+      </div>
+    </el-dialog>
+
     <!-- AI 生成草稿对话框 -->
     <el-dialog v-model="genDialog" title="AI 生成作业流程草稿" width="460px">
       <el-form label-width="84px">
@@ -165,9 +236,17 @@
 <script setup>
 import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { MagicStick, VideoPlay, View, Select, Document } from '@element-plus/icons-vue'
+import {
+  MagicStick, VideoPlay, View, Select, Document,
+  Close, Check, Service, WarnTriangleFilled,
+} from '@element-plus/icons-vue'
+import { marked } from 'marked'
+import DOMPurify from 'dompurify'
 import api from '../api'
 import { useAuthStore } from '../store'
+
+marked.setOptions({ breaks: true, gfm: true })
+const renderMd = (t) => (t ? DOMPurify.sanitize(marked.parse(t)) : '')
 
 const auth = useAuthStore()
 const canEdit = computed(() => ['auditor', 'admin'].includes(auth.user?.role))
@@ -200,6 +279,7 @@ function splitTools(tools) {
 
 // ---- 抽屉：执行 / 预览 ----
 const drawer = ref(false)
+const immersive = ref(false)        // 沉浸式作业模式（执行时全屏）
 const mode = ref('execute') // execute | preview
 const current = ref(null)
 const active = ref(0)
@@ -213,9 +293,44 @@ async function openTemplate(t, m) {
     mode.value = m
     Object.keys(checked).forEach((k) => delete checked[k])
     active.value = m === 'preview' ? data.steps.length : 0
-    drawer.value = true
+    if (m === 'execute') {
+      resetAssist()
+      immersive.value = true        // 执行 → 沉浸式全屏分步
+    } else {
+      drawer.value = true           // 预览 → 抽屉
+    }
   } catch (e) {
     ElMessage.error('加载流程详情失败')
+  }
+}
+
+function quitImmersive() {
+  ElMessageBox.confirm('确认退出当前作业？已勾选的合规项不会被保存。', '退出作业', {
+    type: 'warning', confirmButtonText: '退出', cancelButtonText: '继续作业',
+  }).then(() => { immersive.value = false }).catch(() => {})
+}
+
+// ---- 沉浸式作业内的 RAG 快捷助手（复用 /chat/ask）----
+const iaQuery = ref('')
+const iaAnswer = ref('')
+const iaLoading = ref(false)
+function resetAssist() { iaQuery.value = ''; iaAnswer.value = ''; iaLoading.value = false }
+async function askAssist() {
+  const q = iaQuery.value.trim()
+  if (!q || iaLoading.value) return
+  iaLoading.value = true
+  iaAnswer.value = ''
+  try {
+    const step = currentStep.value
+    const scoped = step ? `${q}（当前作业步骤：${step.title}）` : q
+    const { data } = await api.post('/chat/ask', {
+      query: scoped, device_model: current.value?.device_model || null,
+    })
+    iaAnswer.value = data.answer
+  } catch (e) {
+    ElMessage.error(e.response?.data?.detail || '助手暂不可用')
+  } finally {
+    iaLoading.value = false
   }
 }
 const startRun = (t) => openTemplate(t, 'execute')
@@ -255,6 +370,7 @@ async function finish() {
     })
     ElMessage.success('作业完成，合规校验通过，已归档')
     drawer.value = false
+    immersive.value = false
   } catch (e) {
     const detail = e.response?.data?.detail
     if (detail && detail.missing) {
@@ -406,4 +522,82 @@ onMounted(load)
 }
 .footer { display: flex; align-items: center; justify-content: flex-end; gap: 10px; }
 .progress { margin-right: auto; color: #909399; font-size: 13px; }
+
+/* ---- 沉浸式作业模式 ---- */
+.immersive-dlg :deep(.el-dialog__header) { display: none; }
+.immersive-dlg :deep(.el-dialog__body) { padding: 0; height: 100vh; }
+.imm {
+  height: 100vh; display: flex; flex-direction: column;
+  background: radial-gradient(1200px 500px at 15% -10%, #16213c 0%, #0b0f19 60%);
+  color: #e7eefb;
+}
+.imm-top {
+  display: flex; align-items: center; gap: 18px; padding: 16px 28px;
+  border-bottom: 1px solid rgba(255, 255, 255, .08);
+}
+.imm-name { font-size: 16px; font-weight: 600; color: #cfe0ff; }
+.imm-dots { flex: 1; display: flex; gap: 8px; }
+.imm-dots .dot {
+  width: 26px; height: 5px; border-radius: 3px; background: rgba(255, 255, 255, .14);
+  transition: all .3s;
+}
+.imm-dots .dot.done { background: #00e0a0; }
+.imm-dots .dot.cur { background: #36a3ff; box-shadow: 0 0 10px rgba(54, 163, 255, .8); }
+.imm-top :deep(.el-button) { color: #9fb0cc; }
+
+.imm-body { flex: 1; display: flex; gap: 22px; padding: 26px 36px; overflow: hidden; }
+.imm-main { flex: 1.6; display: flex; flex-direction: column; min-width: 0; }
+.imm-stepno { color: #36a3ff; font-size: 14px; letter-spacing: 2px; font-weight: 600; }
+.imm-steptitle {
+  font-size: 30px; font-weight: 700; margin: 8px 0 18px; color: #fff;
+  display: flex; align-items: center; gap: 12px; line-height: 1.3;
+}
+.imm-instruction { font-size: 17px; line-height: 1.85; color: #c6d3e8; margin: 0 0 18px; }
+.imm-risk {
+  display: flex; align-items: flex-start; gap: 10px; padding: 14px 18px;
+  border: 1.5px solid #ff5a5a; border-radius: 10px; background: rgba(255, 90, 90, .1);
+  color: #ff8b8b; font-size: 15px; font-weight: 500; line-height: 1.6; margin-bottom: 18px;
+  text-shadow: 0 0 12px rgba(255, 90, 90, .3);
+}
+.imm-risk .el-icon { font-size: 20px; margin-top: 2px; flex: none; }
+.imm-tools { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 22px; }
+.imm-tools .lbl { color: #8b98b0; font-size: 14px; margin-right: 4px; }
+.imm-check {
+  margin-top: auto; display: flex; align-items: center; gap: 16px; cursor: pointer;
+  padding: 18px 22px; border-radius: 12px; border: 1.5px solid rgba(255, 255, 255, .14);
+  background: rgba(255, 255, 255, .03); transition: all .2s; user-select: none;
+}
+.imm-check:hover { border-color: rgba(0, 224, 160, .4); }
+.imm-check.checked { border-color: #00e0a0; background: rgba(0, 224, 160, .1); }
+.imm-checkbox {
+  width: 40px; height: 40px; border-radius: 9px; flex: none;
+  border: 2px solid rgba(255, 255, 255, .3); display: flex; align-items: center;
+  justify-content: center; color: #fff; font-size: 24px; transition: all .2s;
+}
+.imm-check.checked .imm-checkbox {
+  background: #00e0a0; border-color: #00e0a0; animation: checkPop .35s ease;
+}
+@keyframes checkPop { 0% { transform: scale(.6); } 60% { transform: scale(1.15); } 100% { transform: scale(1); } }
+.cc-label { font-size: 13px; color: #8b98b0; }
+.imm-check.checked .cc-label { color: #00e0a0; }
+.cc-cp { font-size: 16px; font-weight: 600; color: #e7eefb; margin-top: 3px; }
+
+.imm-assist {
+  flex: 1; max-width: 340px; display: flex; flex-direction: column;
+  background: rgba(19, 26, 43, .7); border: 1px solid rgba(120, 160, 220, .14);
+  border-radius: 12px; padding: 14px;
+}
+.ia-head { font-size: 14px; font-weight: 600; color: #8fc0ff; display: flex; align-items: center; margin-bottom: 10px; }
+.ia-msgs { flex: 1; overflow-y: auto; font-size: 13.5px; line-height: 1.7; }
+.ia-hint { color: #6b7793; line-height: 1.7; }
+.ia-answer { color: #d6e2f5; }
+.ia-answer :deep(p) { margin: 6px 0; }
+.ia-answer :deep(strong) { color: #8fc0ff; }
+.ia-answer :deep(ol), .ia-answer :deep(ul) { padding-left: 20px; }
+.ia-input { display: flex; gap: 6px; margin-top: 10px; }
+.imm-foot {
+  display: flex; align-items: center; gap: 12px; padding: 16px 36px;
+  border-top: 1px solid rgba(255, 255, 255, .08);
+}
+.imm-progress { margin-right: auto; color: #8b98b0; font-size: 14px; }
 </style>
