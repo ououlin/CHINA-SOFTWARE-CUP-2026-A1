@@ -58,3 +58,6 @@ Thumbs.db
 desktop.ini
 
 frontend/dist.zip
+
+# ===== 文档生成脚手架（本地保留，不入代码仓）=====
+_docbuild/
