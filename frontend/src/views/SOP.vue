@@ -149,7 +149,7 @@
             </div>
 
             <div v-if="currentStep.is_required" class="imm-check"
-                 :class="{ checked: checked[currentStep.id] }"
+                 :class="{ checked: checked[currentStep.id], poka: pokaFlash && !checked[currentStep.id] }"
                  @click="checked[currentStep.id] = !checked[currentStep.id]">
               <div class="imm-checkbox"><el-icon v-if="checked[currentStep.id]"><Check /></el-icon></div>
               <div class="imm-check-text">
@@ -178,7 +178,7 @@
           <span class="imm-progress">第 {{ active + 1 }} / {{ current.steps.length }} 步</span>
           <el-button size="large" :disabled="active === 0" @click="active--">上一步</el-button>
           <el-button v-if="active < current.steps.length - 1" size="large" type="primary"
-                     :disabled="!canNext" @click="next">下一步</el-button>
+                     @click="next">下一步</el-button>
           <el-button v-else size="large" type="success" :loading="submitting"
                      :disabled="!allRequiredChecked" @click="finish">完成作业</el-button>
         </div>
@@ -234,7 +234,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted, nextTick } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   MagicStick, VideoPlay, View, Select, Document,
@@ -350,9 +350,21 @@ function stepStatus(idx) {
   if (idx === active.value) return 'process'
   return 'wait'
 }
+const pokaFlash = ref(false)
 function next() {
-  if (!canNext.value) {
-    ElMessage.warning('请先勾选确认本步骤的合规必检项')
+  const s = currentStep.value
+  // 防呆（Poka-Yoke）：未确认合规必检项时，红框呼吸高亮 + 滚动定位 + 风险弹窗拦截
+  if (s && s.is_required && !checked[s.id]) {
+    pokaFlash.value = true
+    setTimeout(() => { pokaFlash.value = false }, 1900)
+    nextTick(() => {
+      document.querySelector('.imm-check')?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    })
+    const riskLine = s.risk ? `\n\n⚠️ 风险提示：${s.risk}` : ''
+    ElMessageBox.alert(
+      `必须先勾选确认本步骤的合规必检项「${s.checkpoint || s.title}」，方可进入下一步。${riskLine}`,
+      '⛔ 合规必检未确认', { type: 'warning', confirmButtonText: '我已知晓' },
+    ).catch(() => {})
     return
   }
   if (active.value < current.value.steps.length - 1) active.value++
@@ -569,6 +581,11 @@ onMounted(load)
 }
 .imm-check:hover { border-color: rgba(0, 224, 160, .4); }
 .imm-check.checked { border-color: #00e0a0; background: rgba(0, 224, 160, .1); }
+.imm-check.poka { animation: pokaBreath .5s ease-in-out 3; }
+@keyframes pokaBreath {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(255, 90, 90, 0); border-color: #ff5a5a; }
+  50% { box-shadow: 0 0 0 7px rgba(255, 90, 90, .35); border-color: #ff5a5a; background: rgba(255, 90, 90, .12); }
+}
 .imm-checkbox {
   width: 40px; height: 40px; border-radius: 9px; flex: none;
   border: 2px solid rgba(255, 255, 255, .3); display: flex; align-items: center;

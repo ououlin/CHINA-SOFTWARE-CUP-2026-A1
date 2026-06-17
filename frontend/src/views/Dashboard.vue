@@ -14,6 +14,8 @@
         <div class="hs-sep"></div>
         <div class="hs"><div class="hsn">{{ dv('case_total') }}</div><div class="hsl">沉淀案例</div></div>
       </div>
+      <el-button class="fs-btn" :icon="FullScreen" circle @click="toggleFullscreen"
+                 :title="isFullscreen ? '退出全屏' : '全屏大屏模式'" />
     </div>
 
     <!-- 指标卡片 -->
@@ -94,7 +96,7 @@
 import { ref, reactive, computed, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { ElMessage } from 'element-plus'
 import {
-  Monitor, Warning, Collection, EditPen, Tickets, ChatDotRound, Star, Share,
+  Monitor, Warning, Collection, EditPen, Tickets, ChatDotRound, Star, Share, FullScreen,
 } from '@element-plus/icons-vue'
 import * as echarts from 'echarts'
 import api from '../api'
@@ -133,6 +135,17 @@ function animateTo(key, to, dur = 950) {
   requestAnimationFrame(tick)
 }
 const dv = (key) => Math.round(disp[key] ?? 0)
+
+// 大屏全屏模式（Fullscreen API，隐藏地址栏提升工业中控感）
+const isFullscreen = ref(false)
+function toggleFullscreen() {
+  const el = document.querySelector('.dash')
+  if (!document.fullscreenElement) el?.requestFullscreen?.()
+  else document.exitFullscreen?.()
+}
+function onFsChange() { isFullscreen.value = !!document.fullscreenElement }
+onMounted(() => document.addEventListener('fullscreenchange', onFsChange))
+onBeforeUnmount(() => document.removeEventListener('fullscreenchange', onFsChange))
 
 const cardDefs = [
   { key: 'device_total', label: '设备总数', icon: Monitor, unit: '台',
@@ -313,6 +326,12 @@ onBeforeUnmount(() => {
 .hsn { font-size: 28px; font-weight: 700; line-height: 1; color: #7fd8ff; text-shadow: 0 0 12px rgba(54,163,255,.6); }
 .hsl { font-size: 12px; color: rgba(255, 255, 255, .75); margin-top: 5px; }
 .hs-sep { width: 1px; height: 32px; background: rgba(255, 255, 255, .2); }
+.fs-btn {
+  position: absolute; top: 14px; right: 16px; z-index: 3; border: none;
+  background: rgba(255, 255, 255, .16); color: #fff;
+}
+.fs-btn:hover { background: rgba(255, 255, 255, .3); color: #fff; }
+.dash:fullscreen { background: #f5f7fa; overflow-y: auto; padding: 18px; }
 
 .cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
 .card {

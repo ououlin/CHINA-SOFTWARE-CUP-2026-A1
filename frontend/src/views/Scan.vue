@@ -17,7 +17,11 @@
               <div class="scan-acts">
                 <el-button v-if="!scanning" type="primary" :icon="VideoCamera"
                            @click="startScan">启动摄像头扫码</el-button>
-                <el-button v-else @click="stopScan">停止</el-button>
+                <template v-else>
+                  <el-button @click="stopScan">停止</el-button>
+                  <el-button :icon="Sunny" :type="torchOn ? 'warning' : ''"
+                             @click="toggleTorch">{{ torchOn ? '关闭闪光灯' : '开启闪光灯' }}</el-button>
+                </template>
               </div>
               <el-text v-if="!scanning" size="small" type="info">
                 若设备无摄像头，请切换「手动输入」标签页。
@@ -90,7 +94,7 @@
 <script setup>
 import { ref, reactive, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { ElMessage } from 'element-plus'
-import { VideoCamera, Search, Download, Warning } from '@element-plus/icons-vue'
+import { VideoCamera, Search, Download, Warning, Sunny } from '@element-plus/icons-vue'
 import QRCode from 'qrcode'
 import { Html5Qrcode } from 'html5-qrcode'
 import api from '../api'
@@ -157,7 +161,19 @@ async function queryByCode(raw) {
 
 // ---- 摄像头扫码 ----
 const scanning = ref(false)
+const torchOn = ref(false)
 let html5Qr = null
+
+// 闪光灯（昏暗机房/油污二维码兜底；部分设备/浏览器不支持）
+async function toggleTorch() {
+  if (!html5Qr) return
+  try {
+    await html5Qr.applyVideoConstraints({ advanced: [{ torch: !torchOn.value }] })
+    torchOn.value = !torchOn.value
+  } catch (e) {
+    ElMessage.warning('当前设备或浏览器不支持闪光灯控制')
+  }
+}
 
 async function startScan() {
   scanning.value = true
@@ -183,6 +199,7 @@ async function stopScan() {
     html5Qr = null
   }
   scanning.value = false
+  torchOn.value = false
 }
 
 function onScanned(text) {
