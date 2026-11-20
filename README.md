@@ -335,9 +335,21 @@ cd backend
 .venv/bin/python -m pytest -q
 ```
 
-覆盖鉴权与越权、文本/图片/SSE 问答、Agent 协议与失败降级、三种检索模式、pgvector 合同、知识安全（注入/投毒）、图谱来源治理、SOP、案例、设备与反馈闭环。最近一次本地回归（Python 3.11 + SQLite）：**66 passed, 1 skipped**；跳过项为需要真实 PostgreSQL 的 pgvector 集成用例，未提供 `TEST_POSTGRES_URL` 时自动跳过，CI 中由 pgvector 服务容器兜底（CI 含该集成用例，全部通过）。
+覆盖鉴权与越权、文本/图片/SSE 问答、Agent 协议与失败降级、三种检索模式、pgvector 合同、知识安全（注入/投毒）、图谱来源治理、SOP、案例、设备与反馈闭环。最近一次本地回归（Python 3.11 + SQLite）：**73 passed, 1 skipped**；跳过项为需要真实 PostgreSQL 的 pgvector 集成用例，未提供 `TEST_POSTGRES_URL` 时自动跳过，CI 中由 pgvector 服务容器兜底（CI 含该集成用例，全部通过）。
 
 ### 量化评测与证据
+
+一条命令跑完检索与消融，产出带 git 版本与配置快照的运行目录：
+
+```bash
+cd backend
+python -m evaluation.run_all --fail-on-threshold          # 检索 + 消融，阈值见 thresholds.json
+python -m evaluation.run_all --with-agent                 # 追加 Agent 评测（需真实模型 Key）
+python -m evaluation.run_all --with-load --base-url http://127.0.0.1:8000
+# 产物：evidence/evaluation/run-<时间戳>/{summary.json,report.md}，并写入 evaluation_runs 表
+```
+
+单项评测与压测仍可单独执行：
 
 ```bash
 cd backend
@@ -345,7 +357,7 @@ python -m evaluation.evaluate_retrieval --fail-on-threshold     # Recall/MRR/nDC
 python -m evaluation.evaluate_ablation  --fail-on-threshold     # 三模式消融
 python -m evaluation.evaluate_agent     --fail-on-threshold     # 任务完成率 / 引用有效性
 python -m evaluation.load_test --mode health --concurrency 30 --requests 30 --fail-on-threshold
-python -m evaluation.load_test --mode sse --concurrency 30 --requests 30
+python -m evaluation.bench_retrieval --chunks 10000 --queries 50 --fail-on-threshold  # 检索延迟基线
 
 cd ..
 python deploy/generate_sbom.py --output evidence/sbom/cyclonedx.json   # CycloneDX SBOM
@@ -354,13 +366,25 @@ bash deploy/05_collect_loongarch_evidence.sh                           # 实机 
 
 报告默认写入仓库根目录 `evidence/`（`evaluation/`、`performance/` 等，按时间戳分目录）。**该目录是运行产物，不随仓库提交**；答辩时以实机跑出的报告为准，未经实测的数字不写成结论。
 
+历史评测可通过 `GET /api/eval/runs`（审核员/管理员）查看，用于对比不同提交的指标变化。
+
+### 性能基线（本机实测，命令可复现）
+
+| 项目 | 优化前 | 当前 | 复现命令 |
+|---|---|---|---|
+| 前端首屏传输（gzip） | ≈ 815 KB | ≈ 170 KB | `cd frontend && npm run build` |
+| 1 万块检索 P95（SQLite 回退路径） | 522 ms | 11 ms | `python -m evaluation.bench_retrieval --chunks 10000` |
+| 1 万块检索 P50 | 416 ms | 7 ms | 同上 |
+
+> 检索基线使用合成语料与确定性伪嵌入，用于回归对比，不代表真实语义质量；生产检索以 PostgreSQL + pgvector 实测为准。
+
 ### 持续集成
 
 `.github/workflows/ci.yml` 在 push / PR 时并行执行两个作业：
 
 | 作业 | 步骤 |
 |---|---|
-| Backend Check | Python 3.12 → 安装依赖 → `py_compile` 全量语法检查 → `ruff check`（E9/F63/F7/F82，阻断未定义名与语法错误）→ `pytest`（挂载 pgvector/pg16 服务） |
+| Backend Check | Python 3.12 → 安装依赖 → `py_compile` 全量语法检查 → `ruff check`（E9/F63/F7/F82，阻断未定义名与语法错误）→ `pytest`（挂载 pgvector/pg16 服务）→ 评测配置自检（`evaluation.run_all --check-only`） |
 | Frontend Build | Node 20 → `npm ci` → `npm run build` |
 
 同分支新提交自动取消旧流水线（`concurrency.cancel-in-progress`）。
@@ -438,10 +462,13 @@ backend/
     upload_guard.py          上传文件校验（类型/大小/路径穿越）
     audit_log.py  ratelimit.py  metrics.py
     routers/                 auth / chat / documents / sop / cases / kg / feedback
-                             / devices / dashboard / alert / audit
+                             / devices / dashboard / alert / audit / evaluation
     seed.py                  3 类设备种子数据 + 图谱 + 修正知识
   tests/                     pytest 套件（含 pgvector 契约测试）
-  evaluation/                检索消融、Agent 评测、30 并发/SSE 压测
+  evaluation/                run_all 一键评测、检索消融、Agent 评测、30 并发/SSE 压测
+    run_all.py               汇总运行并写入 evaluation_runs
+    bench_retrieval.py       1 万块合成语料检索基准
+    thresholds.json          统一阈值（min/max）
   requirements.txt           开发依赖
   requirements-server.txt    生产依赖（LoongArch 友好，不含原生扩展）
   Dockerfile
@@ -450,6 +477,7 @@ frontend/
     views/                   Dashboard / Chat / AgentDiagnosis / Devices / Alert
                              / Scan / SOP / Cases / Graph / Feedback / Documents / Audit
     components/  config/     公共组件与前端配置
+    lib/chart.js             ECharts 按需注册（6 类图表 + 必要组件）
     styles.css               亮/暗双主题变量、响应式断点、骨架屏
   nginx.conf  Dockerfile     静态托管 + /api 反代 + SSE 透传
 deploy/
