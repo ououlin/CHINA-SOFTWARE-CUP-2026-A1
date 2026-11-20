@@ -3,6 +3,7 @@
 > **多模态 RAG · ReAct 自主诊断 Agent · 知识治理闭环 · 国产化可部署**<br/>
 > 第十五届中国软件杯 A 组赛题 · 龙芯中科出题
 
+![CI](https://github.com/ououlin/CHINA-SOFTWARE-CUP-2026-A1/actions/workflows/ci.yml/badge.svg)
 ![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.110-009688?logo=fastapi&logoColor=white)
 ![Vue](https://img.shields.io/badge/Vue-3-42B883?logo=vuedotjs&logoColor=white)
@@ -334,7 +335,7 @@ cd backend
 .venv/bin/python -m pytest -q
 ```
 
-覆盖鉴权与越权、文本/图片/SSE 问答、Agent 协议与失败降级、三种检索模式、pgvector 合同、知识安全（注入/投毒）、图谱来源治理、SOP、案例、设备与反馈闭环。最近一次本地回归（Python 3.11 + SQLite）：**66 passed, 1 skipped**；跳过项为需要真实 PostgreSQL 的 pgvector 集成用例，未提供 `TEST_POSTGRES_URL` 时自动跳过，CI 中由 pgvector 服务容器兜底。
+覆盖鉴权与越权、文本/图片/SSE 问答、Agent 协议与失败降级、三种检索模式、pgvector 合同、知识安全（注入/投毒）、图谱来源治理、SOP、案例、设备与反馈闭环。最近一次本地回归（Python 3.11 + SQLite）：**66 passed, 1 skipped**；跳过项为需要真实 PostgreSQL 的 pgvector 集成用例，未提供 `TEST_POSTGRES_URL` 时自动跳过，CI 中由 pgvector 服务容器兜底（CI 含该集成用例，全部通过）。
 
 ### 量化评测与证据
 
