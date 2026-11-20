@@ -6,12 +6,15 @@ import argparse
 import json
 import math
 import statistics
+import sys
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from pathlib import Path
 
 import httpx
+
+from evaluation.thresholds import check_metrics, load_thresholds
 
 
 DEFAULT_OUTPUT = Path(__file__).resolve().parents[2] / "evidence" / "performance"
@@ -173,8 +176,11 @@ def main() -> int:
         markdown_report(summary), encoding="utf-8",
     )
     print(json.dumps(summary, ensure_ascii=False, indent=2))
-    if args.fail_on_threshold and summary["error_rate"] >= 0.01:
-        return 1
+    if args.fail_on_threshold:
+        ok, failures = check_metrics(summary, load_thresholds()["load"])
+        for failure in failures:
+            print(f"[threshold] {failure}", file=sys.stderr)
+        return 0 if ok else 1
     return 0
 
 

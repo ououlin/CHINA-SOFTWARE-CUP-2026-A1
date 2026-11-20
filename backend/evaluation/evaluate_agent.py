@@ -6,6 +6,7 @@ import argparse
 import json
 import re
 import statistics
+import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -16,6 +17,7 @@ from app.config import settings
 from app.db import SessionLocal
 from app.models import DocChunk
 from app.rag.agent_diagnosis import react_diagnose
+from evaluation.thresholds import check_metrics, load_thresholds
 
 
 DEFAULT_OUTPUT = Path(__file__).resolve().parents[2] / "evidence" / "evaluation"
@@ -144,13 +146,11 @@ def main() -> int:
     )
     print(json.dumps(summary, ensure_ascii=False, indent=2))
 
-    if args.fail_on_threshold and (
-        summary["completion_rate"] < 0.95
-        or summary["protocol_validity"] < 0.99
-        or summary["citation_existence_rate"] < 0.95
-        or summary["report_reference_validity"] < 0.95
-    ):
-        return 1
+    if args.fail_on_threshold:
+        ok, failures = check_metrics(summary, load_thresholds()["agent"])
+        for failure in failures:
+            print(f"[threshold] {failure}", file=sys.stderr)
+        return 0 if ok else 1
     return 0
 
 

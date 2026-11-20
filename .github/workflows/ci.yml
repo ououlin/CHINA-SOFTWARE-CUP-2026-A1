@@ -67,6 +67,10 @@ jobs:
       - name: 运行测试（pytest）
         run: python -m pytest tests/ -q
 
+      - name: 评测数据集与阈值自检
+        # 校验 retrieval_cases 扩增后的查询数与 thresholds.json 结构，防止评测配置漂移。
+        run: python -m evaluation.run_all --check-only
+
   # ============ 前端检查 ============
   frontend:
     name: Frontend Build

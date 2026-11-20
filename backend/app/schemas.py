@@ -383,3 +383,16 @@ class AuditOut(BaseModel):
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+# ---- 量化评测 ----
+class EvaluationRunOut(BaseModel):
+    id: int
+    run_id: str
+    git_commit: str = ""
+    status: str
+    passed: bool
+    metrics: dict = Field(default_factory=dict)
+    report_path: str = ""
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)

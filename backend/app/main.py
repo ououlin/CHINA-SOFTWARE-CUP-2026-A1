@@ -15,7 +15,7 @@ from . import models  # noqa: F401  确保模型注册到 Base
 from .metrics import record_request, render
 from .routers import (
     auth, chat, documents, sop, cases, kg, feedback, devices, dashboard, alert,
-    audit,
+    audit, evaluation,
 )
 
 
@@ -82,3 +82,4 @@ app.include_router(devices.router)
 app.include_router(dashboard.router)
 app.include_router(alert.router)
 app.include_router(audit.router)
+app.include_router(evaluation.router)

@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
 from app.config import settings
 from evaluation.evaluate_retrieval import evaluate, expand_cases, load_cases
+from evaluation.thresholds import check_metrics, load_thresholds
 
 
 MODES = ("vector", "lexical", "hybrid")
@@ -90,11 +92,11 @@ def main() -> int:
     hybrid = next(
         item for item in report["results"] if item["retrieval_mode"] == "hybrid"
     )
-    if args.fail_on_threshold and (
-        hybrid["recall_at_k"] < 0.90
-        or hybrid["model_filter_accuracy"] < 0.95
-    ):
-        return 1
+    if args.fail_on_threshold:
+        ok, failures = check_metrics(hybrid, load_thresholds()["ablation"])
+        for failure in failures:
+            print(f"[threshold] hybrid.{failure}", file=sys.stderr)
+        return 0 if ok else 1
     return 0
 
 

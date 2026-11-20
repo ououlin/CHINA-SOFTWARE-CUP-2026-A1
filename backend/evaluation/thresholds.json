@@ -1,0 +1,24 @@
+{
+  "$comment": "统一评测阈值：所有 --fail-on-threshold 都读取本文件，不要再把数字写死在脚本里。min/max 为该指标的允许边界。",
+  "version": 1,
+  "metrics": {
+    "retrieval": {
+      "recall_at_k": { "min": 0.9 },
+      "model_filter_accuracy": { "min": 0.95 }
+    },
+    "ablation": {
+      "recall_at_k": { "min": 0.9 },
+      "model_filter_accuracy": { "min": 0.95 }
+    },
+    "agent": {
+      "completion_rate": { "min": 0.95 },
+      "protocol_validity": { "min": 0.99 },
+      "citation_existence_rate": { "min": 0.95 },
+      "report_reference_validity": { "min": 0.95 }
+    },
+    "load": {
+      "error_rate": { "max": 0.01 },
+      "sse_error_event_rate": { "max": 0.01 }
+    }
+  }
+}

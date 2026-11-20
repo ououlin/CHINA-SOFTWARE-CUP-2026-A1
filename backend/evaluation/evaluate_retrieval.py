@@ -6,6 +6,7 @@ import argparse
 import json
 import math
 import statistics
+import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -14,6 +15,7 @@ from typing import Iterable
 from app.config import settings
 from app.db import SessionLocal
 from app.rag.retriever import normalize_model, retrieve
+from evaluation.thresholds import check_metrics, load_thresholds
 
 
 QUERY_TEMPLATES = [
@@ -183,11 +185,10 @@ def main() -> int:
     print(json.dumps(summary, ensure_ascii=False, indent=2))
 
     if args.fail_on_threshold:
-        passed = (
-            summary["recall_at_k"] >= 0.90
-            and summary["model_filter_accuracy"] >= 0.95
-        )
-        return 0 if passed else 1
+        ok, failures = check_metrics(summary, load_thresholds()["retrieval"])
+        for failure in failures:
+            print(f"[threshold] {failure}", file=sys.stderr)
+        return 0 if ok else 1
     return 0
 
 

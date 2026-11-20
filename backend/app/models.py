@@ -9,7 +9,7 @@ import datetime as dt
 
 from sqlalchemy import (
     Column, Integer, String, Text, DateTime, ForeignKey, JSON, UniqueConstraint,
-    Float,
+    Float, Boolean,
 )
 from sqlalchemy.orm import relationship
 from sqlalchemy.types import UserDefinedType
@@ -336,4 +336,24 @@ class AuditLog(Base):
     target_type = Column(String(32), default="")     # case / sop / feedback / device
     target_id = Column(Integer, nullable=True)
     detail = Column(Text, default="")                # 操作简述
+    created_at = Column(DateTime, default=_now, index=True)
+
+
+# ============ 量化评测运行记录（run_all 落库） ============
+
+class EvaluationRun(Base):
+    """量化评测运行记录：每次 run_all 写一条，供 /api/eval/runs 查看历史趋势。
+
+    metrics 保存各组指标与阈值判定结果，report_path 指向 evidence/ 下的报告，
+    只做只读展示，不参与业务逻辑。
+    """
+    __tablename__ = "evaluation_runs"
+
+    id = Column(Integer, primary_key=True)
+    run_id = Column(String(64), nullable=False, unique=True, index=True)
+    git_commit = Column(String(64), default="")
+    status = Column(String(16), default="completed")   # completed / failed
+    passed = Column(Boolean, default=False)
+    metrics = Column(JSON, default=dict)
+    report_path = Column(String(255), default="")
     created_at = Column(DateTime, default=_now, index=True)
