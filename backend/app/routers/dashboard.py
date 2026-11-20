@@ -4,6 +4,7 @@
 + 知识图谱类型分布 + 近 7 天问答/报修趋势。
 """
 import datetime as dt
+from datetime import timezone
 
 from fastapi import APIRouter, Depends
 from sqlalchemy import select, func
@@ -88,7 +89,7 @@ def overview(db: Session = Depends(get_db),
 
     # ---- 近 7 天问答/报修趋势（折线）----
     # 数据按 created_at(UTC) 存储，日期轴亦用 UTC 对齐，避免本地时区错位
-    today = dt.datetime.utcnow().date()
+    today = dt.datetime.now(tz=timezone.utc).date()
     days = [today - dt.timedelta(days=i) for i in range(6, -1, -1)]
     start = dt.datetime.combine(days[0], dt.time.min)
 

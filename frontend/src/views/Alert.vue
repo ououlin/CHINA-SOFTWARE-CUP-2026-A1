@@ -1,19 +1,13 @@
 <template>
   <div class="alert-page" v-loading="loading">
+    <PageHeader title="故障预警与预测性维护" description="按设备风险排序，优先处理影响安全与连续生产的隐患。" eyebrow="风险控制" :icon="WarningFilled" tone="warning">
+      <template #actions><el-button size="small" :icon="Refresh" :loading="loading" @click="load">刷新风险</el-button></template>
+    </PageHeader>
     <!-- 风险概览 -->
     <div class="summary">
-      <div class="sum-card high">
-        <div class="sc-head"><span>高风险设备</span><el-icon><WarningFilled /></el-icon></div>
-        <div class="sc-body"><span class="sc-num">{{ summary.high }}</span><span class="sc-unit">台</span></div>
-      </div>
-      <div class="sum-card mid">
-        <div class="sc-head"><span>中风险设备</span><el-icon><Warning /></el-icon></div>
-        <div class="sc-body"><span class="sc-num">{{ summary.medium }}</span><span class="sc-unit">台</span></div>
-      </div>
-      <div class="sum-card low">
-        <div class="sc-head"><span>低风险设备</span><el-icon><CircleCheck /></el-icon></div>
-        <div class="sc-body"><span class="sc-num">{{ summary.low }}</span><span class="sc-unit">台</span></div>
-      </div>
+      <MetricCard label="高风险设备" :value="summary.high" unit="台" :icon="WarningFilled" tone="warning" :alert="summary.high > 0" />
+      <MetricCard label="中风险设备" :value="summary.medium" unit="台" :icon="Warning" tone="warning" />
+      <MetricCard label="低风险设备" :value="summary.low" unit="台" :icon="CircleCheck" tone="brand" />
     </div>
 
     <el-row :gutter="14" class="row">
@@ -75,9 +69,12 @@
 import { ref, reactive, computed, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { ElMessage } from 'element-plus'
 import { MagicStick, Download, WarningFilled, Warning, CircleCheck } from '@element-plus/icons-vue'
+import { Refresh } from '@element-plus/icons-vue'
 import * as echarts from 'echarts'
 import api from '../api'
 import { useAuthStore } from '../store'
+import PageHeader from '../components/PageHeader.vue'
+import MetricCard from '../components/MetricCard.vue'
 
 const auth = useAuthStore()
 const canManage = computed(() => ['auditor', 'admin'].includes(auth.user?.role))

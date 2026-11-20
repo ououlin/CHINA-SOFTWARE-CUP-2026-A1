@@ -233,7 +233,7 @@ def handle_record(rid: int, body: MaintenanceRecordHandle,
     r.handler_id = user.id
     r.status = body.status if body.status in ("processing", "done") else "done"
     if r.status == "done":
-        r.done_at = dt.datetime.utcnow()
+        r.done_at = dt.datetime.now(dt.timezone.utc).replace(tzinfo=None)
     record_audit(db, user, "device.repair_handle", "device", r.device_id,
                  f"处理报修「{r.title}」→ {r.status}")
     db.flush()

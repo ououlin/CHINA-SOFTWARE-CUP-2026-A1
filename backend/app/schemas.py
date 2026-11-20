@@ -2,7 +2,7 @@
 from datetime import datetime
 from typing import List, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
 
 
 # ---- 鉴权 ----
@@ -20,20 +20,20 @@ class UserOut(BaseModel):
     display_name: str
     role: str
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # ---- 问答 ----
 class ChatTurn(BaseModel):
     role: str          # user / assistant
-    content: str
+    content: str = Field(min_length=1, max_length=8000)
 
 
 class AskReq(BaseModel):
-    query: str
-    device_model: Optional[str] = None
-    history: List[ChatTurn] = []   # 多轮上下文（不含本次 query），按时间正序
+    query: str = Field(min_length=2, max_length=2000)
+    device_model: Optional[str] = Field(default=None, max_length=128)
+    device_id: Optional[int] = None
+    history: List[ChatTurn] = Field(default_factory=list, max_length=8)
 
 
 class Citation(BaseModel):
@@ -56,6 +56,31 @@ class AppliedCorrection(BaseModel):
     score: float
 
 
+class AnswerConfidence(BaseModel):
+    level: str = "medium"
+    score: float = 0.0
+    reasons: List[str] = []
+    warnings: List[str] = []
+    citation_check: dict = {}
+
+
+class RecommendedSOP(BaseModel):
+    id: int
+    name: str
+    device_type: str = ""
+    device_model: str = ""
+    repair_level: str = ""
+    summary: str = ""
+    score: float = 0.0
+
+
+class SafetyAssessment(BaseModel):
+    level: str = "low"
+    requires_human_confirmation: bool = False
+    categories: List[str] = Field(default_factory=list)
+    message: str = ""
+
+
 class AskResp(BaseModel):
     answer: str
     citations: List[Citation]
@@ -63,6 +88,46 @@ class AskResp(BaseModel):
     corrections: List[AppliedCorrection] = []
     rewritten_query: Optional[str] = None   # 进阶：查询改写结果（口语→工业术语）
     graph: List[str] = []                   # 进阶：Graph RAG 注入的图谱关联三元组
+    confidence: AnswerConfidence = AnswerConfidence()
+    recommended_sops: List[RecommendedSOP] = []
+    safety: SafetyAssessment = SafetyAssessment()
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+# ---- Agent 自主诊断（G9）----
+class DiagnoseReq(BaseModel):
+    query: str = Field(min_length=2, max_length=2000)
+    device_model: Optional[str] = Field(default=None, max_length=128)
+    device_id: Optional[int] = None
+
+
+class DiagnoseStep(BaseModel):
+    phase: str               # decompose / retrieve / validate / diagnose
+    title: str
+    description: str
+    sub_questions: List[str] = []
+    results: List[dict] = []
+    validation: Optional[dict] = None
+    report: Optional[str] = None
+
+
+class DiagnoseResp(BaseModel):
+    query: str
+    steps: List[DiagnoseStep] = []
+    report: str
+    confidence: AnswerConfidence = AnswerConfidence()
+    sub_questions: List[str] = []
+    all_citations: List[Citation] = []
+    graph_evidence: List[str] = []
+    reasoning_chains: List[List[str]] = []
+
+
+# ---- 知识图谱推理链（G10）----
+class ReasoningChainResp(BaseModel):
+    query: str
+    chains: List[List[str]] = []       # [[fault, cause, measure], ...]
+    total: int = 0
 
 
 # ---- 文档 ----
@@ -74,8 +139,7 @@ class DocumentOut(BaseModel):
     device_type: str
     status: str
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # ---- M3 标准化作业指引（SOP）----
@@ -92,8 +156,7 @@ class StepIn(BaseModel):
 class StepOut(StepIn):
     id: int
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class SOPTemplateIn(BaseModel):
@@ -143,8 +206,7 @@ class SOPRunOut(BaseModel):
     note: str
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # ---- M4 知识沉淀（检修案例 + 知识图谱）----
@@ -230,8 +292,7 @@ class FeedbackOut(BaseModel):
     user_name: str = ""
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class FeedbackStats(BaseModel):
@@ -321,5 +382,4 @@ class AuditOut(BaseModel):
     detail: str
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)

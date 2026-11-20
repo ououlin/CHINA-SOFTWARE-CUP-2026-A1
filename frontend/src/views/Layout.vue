@@ -1,132 +1,52 @@
 <template>
   <el-container class="app-layout">
-    <el-aside width="220px" class="aside">
-      <div class="logo">
-        <el-icon :size="24" color="#fff"><Tools /></el-icon>
-        <span>检修智能助手</span>
-      </div>
-      <el-menu :default-active="activePath" router class="menu"
-               background-color="transparent" text-color="#cdd9f0"
-               active-text-color="#fff">
-        <el-menu-item index="/dashboard">
-          <el-icon><DataBoard /></el-icon><span>数据看板</span>
-        </el-menu-item>
-        <el-menu-item index="/chat">
-          <el-icon><ChatDotRound /></el-icon><span>智能检修问答</span>
-        </el-menu-item>
-        <el-menu-item index="/devices">
-          <el-icon><Monitor /></el-icon><span>设备档案</span>
-        </el-menu-item>
-        <el-menu-item index="/alert">
-          <el-icon><WarningFilled /></el-icon><span>故障预警</span>
-        </el-menu-item>
-        <el-menu-item index="/scan">
-          <el-icon><Postcard /></el-icon><span>扫码报修</span>
-        </el-menu-item>
-        <el-menu-item index="/sop">
-          <el-icon><Tickets /></el-icon><span>作业指引</span>
-        </el-menu-item>
-        <el-menu-item index="/cases">
-          <el-icon><EditPen /></el-icon><span>知识沉淀</span>
-        </el-menu-item>
-        <el-menu-item index="/graph">
-          <el-icon><Share /></el-icon><span>知识图谱</span>
-        </el-menu-item>
-        <el-menu-item index="/feedback">
-          <el-icon><Star /></el-icon><span>标注修正</span>
-        </el-menu-item>
-        <el-menu-item index="/documents">
-          <el-icon><Collection /></el-icon><span>知识库</span>
-        </el-menu-item>
-        <el-menu-item v-if="canManage" index="/audit">
-          <el-icon><Document /></el-icon><span>操作审计</span>
-        </el-menu-item>
-      </el-menu>
-    </el-aside>
-
-    <el-container>
+    <el-aside width="244px" class="aside desktop-aside"><SidebarNav :sections="visibleSections" :active-path="activePath" /></el-aside>
+    <el-drawer v-model="drawerOpen" direction="ltr" :with-header="false" size="278px" modal-class="mobile-menu-drawer" @close="drawerOpen = false">
+      <SidebarNav :sections="visibleSections" :active-path="activePath" @select="onMenuSelect" />
+    </el-drawer>
+    <el-container class="content-shell">
       <el-header class="header">
         <div class="head-left">
+          <el-button class="menu-toggle" :icon="Fold" text aria-label="打开导航" @click="drawerOpen = true" />
           <div class="head-bar"></div>
-          <div class="head-meta">
-            <div class="head-title">{{ currentTitle }}</div>
-            <div v-if="currentDesc" class="head-desc">{{ currentDesc }}</div>
-          </div>
+          <div class="head-meta"><div class="head-crumb">设备检修工作台 <span>/</span> {{ currentTitle }}</div><div v-if="currentDesc" class="head-desc">{{ currentDesc }}</div></div>
         </div>
-        <el-dropdown @command="onCommand">
-          <span class="user">
-            <el-icon><UserFilled /></el-icon>
-            {{ auth.user?.display_name }}
-            <el-tag size="small" type="info" effect="plain">{{ roleLabel }}</el-tag>
-          </span>
-          <template #dropdown>
-            <el-dropdown-menu>
-              <el-dropdown-item command="logout">退出登录</el-dropdown-item>
-            </el-dropdown-menu>
-          </template>
-        </el-dropdown>
+        <div class="head-right">
+          <div class="connection-state"><i></i><span>服务在线</span></div>
+          <el-button class="theme-toggle" text :title="isDark ? '切换为亮色' : '切换为暗色'" @click="toggleTheme"><el-icon :size="18"><Sunny v-if="isDark" /><Moon v-else /></el-icon></el-button>
+          <el-dropdown @command="onCommand"><button class="user" type="button"><span class="avatar"><el-icon><UserFilled /></el-icon></span><span class="user-copy"><b>{{ auth.user?.display_name || '用户' }}</b><small>{{ roleLabel }}</small></span><el-icon class="user-arrow"><ArrowDown /></el-icon></button><template #dropdown><el-dropdown-menu><el-dropdown-item command="logout">退出登录</el-dropdown-item></el-dropdown-menu></template></el-dropdown>
+        </div>
       </el-header>
-      <el-main class="main">
-        <router-view />
-      </el-main>
+      <el-main class="main"><router-view /></el-main>
     </el-container>
   </el-container>
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { ArrowDown, Fold, Moon, Sunny, UserFilled } from '@element-plus/icons-vue'
 import { useAuthStore } from '../store'
+import { navigationSections } from '../config/navigation'
+import SidebarNav from '../components/SidebarNav.vue'
 
-const route = useRoute()
-const router = useRouter()
-const auth = useAuthStore()
-
-const activePath = computed(() => route.path)
-const currentTitle = computed(() => route.meta.title || '')
-const currentDesc = computed(() => route.meta.desc || '')
-const roleLabel = computed(() => ({
-  worker: '一线人员', auditor: '审核员', admin: '管理员',
-}[auth.user?.role] || ''))
+const route = useRoute(); const router = useRouter(); const auth = useAuthStore(); const drawerOpen = ref(false)
+const isDark = ref(document.documentElement.classList.contains('dark'))
+const activePath = computed(() => route.path); const currentTitle = computed(() => route.meta.title || ''); const currentDesc = computed(() => route.meta.desc || '')
+const roleLabel = computed(() => ({ worker: '一线作业员', auditor: '审核员', admin: '管理员' }[auth.user?.role] || ''))
 const canManage = computed(() => ['auditor', 'admin'].includes(auth.user?.role))
-
-function onCommand(cmd) {
-  if (cmd === 'logout') {
-    auth.logout()
-    router.push('/login')
-  }
-}
+const visibleSections = computed(() => navigationSections.map((section) => ({ ...section, items: section.items.filter((item) => !item.manageOnly || canManage.value) })).filter((section) => section.items.length))
+function applyTheme(dark) { document.documentElement.classList.toggle('dark', dark); localStorage.setItem('theme', dark ? 'dark' : 'light') }
+function toggleTheme() { isDark.value = !isDark.value; applyTheme(isDark.value) }
+function onMenuSelect() { drawerOpen.value = false }
+function onCommand(command) { if (command === 'logout') { auth.logout(); router.push('/login') } }
+function onResize() { if (window.innerWidth > 768) drawerOpen.value = false }
+onMounted(() => window.addEventListener('resize', onResize)); onBeforeUnmount(() => window.removeEventListener('resize', onResize))
 </script>
 
 <style scoped>
-.app-layout { height: 100%; }
-.aside { background: linear-gradient(180deg, #0f3270 0%, #14418c 55%, #163d80 100%); }
-.logo {
-  height: 56px; display: flex; align-items: center; gap: 10px;
-  color: #fff; font-size: 17px; font-weight: 600; padding-left: 20px;
-  background: linear-gradient(120deg, #0b2a63, #14418c);
-  border-bottom: 1px solid rgba(255, 255, 255, .08);
-}
-.menu { border-right: none; }
-.menu :deep(.el-menu-item) { margin: 2px 10px; border-radius: 8px; }
-.menu :deep(.el-menu-item:hover) { background: rgba(255, 255, 255, .08) !important; }
-.menu :deep(.el-menu-item.is-active) {
-  background: rgba(79, 155, 255, .22) !important;
-  box-shadow: inset 3px 0 0 #4d9bff;
-  font-weight: 600;
-}
-.header {
-  background: #fff; display: flex; align-items: center;
-  justify-content: space-between; border-bottom: 1px solid #ebeef5;
-  box-shadow: 0 1px 6px rgba(0, 0, 0, .03); height: 60px;
-}
-.head-left { display: flex; align-items: center; gap: 12px; }
-.head-bar {
-  width: 4px; height: 32px; border-radius: 3px;
-  background: linear-gradient(180deg, #1f6feb, #14418c);
-}
-.head-title { font-size: 17px; font-weight: 700; color: #1f2329; line-height: 1.2; }
-.head-desc { font-size: 12.5px; color: #8a8f99; margin-top: 2px; }
-.user { display: flex; align-items: center; gap: 6px; cursor: pointer; }
-.main { background: #f5f7fa; padding: 18px; }
+.app-layout{min-height:100%;height:100dvh}.content-shell{min-width:0;min-height:0}.aside{background:var(--aside-grad);height:100%;position:relative;overflow:hidden}.aside:after{content:'';position:absolute;inset:0;pointer-events:none;opacity:.16;background-image:linear-gradient(rgba(137,198,184,.18) 1px,transparent 1px),linear-gradient(90deg,rgba(137,198,184,.18) 1px,transparent 1px);background-size:28px 28px;mask-image:linear-gradient(to bottom,#000,transparent 80%)}
+.header{height:72px;padding:0 26px;display:flex;align-items:center;justify-content:space-between;background:var(--bg-surface);border-bottom:1px solid var(--bd)}.head-left,.head-right{display:flex;align-items:center;gap:14px;min-width:0}.head-bar{width:4px;height:28px;background:var(--brand);border-radius:2px}.head-meta{min-width:0}.head-crumb{color:var(--ink);font-size:15px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.head-crumb span{margin:0 7px;color:var(--bd-strong);font-weight:400}.head-desc{margin-top:3px;color:var(--muted);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.connection-state{display:flex;align-items:center;gap:6px;color:var(--muted);font-size:11px}.connection-state i{width:7px;height:7px;border-radius:50%;background:#3dbd8b;box-shadow:0 0 0 3px rgba(61,189,139,.14)}.theme-toggle{color:var(--ink)}.user{display:flex;align-items:center;gap:8px;border:0;background:none;color:var(--ink);cursor:pointer;padding:3px 0 3px 5px}.avatar{width:31px;height:31px;display:grid;place-items:center;color:#fff;background:var(--brand-grad);border-radius:50%}.user-copy{display:flex;flex-direction:column;align-items:flex-start;line-height:1.1}.user-copy b{font-size:12px;font-weight:600}.user-copy small{margin-top:3px;color:var(--muted);font-size:10px}.user-arrow{color:var(--muted);font-size:12px}.menu-toggle{display:none;color:var(--ink)}.main{min-width:0;min-height:0;overflow:auto;padding:24px;background:var(--bg-page)}
+@media(max-width:768px){.desktop-aside{display:none!important}.menu-toggle{display:inline-flex}.header{height:60px;padding:0 12px}.head-bar{height:24px}.head-crumb{font-size:14px}.head-desc,.connection-state,.user-copy,.user-arrow{display:none}.main{padding:12px!important}}
 </style>
+<style>.mobile-menu-drawer .el-drawer__body{padding:0;background:var(--aside-grad)}</style>

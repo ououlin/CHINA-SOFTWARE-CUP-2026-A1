@@ -3,6 +3,7 @@ import datetime as dt
 import hashlib
 import hmac
 import os
+from datetime import timezone
 from typing import Optional
 
 import jwt
@@ -38,7 +39,7 @@ def verify_password(password: str, stored: str) -> bool:
 
 
 def create_access_token(user: User) -> str:
-    expire = dt.datetime.utcnow() + dt.timedelta(minutes=settings.jwt_expire_minutes)
+    expire = dt.datetime.now(tz=timezone.utc) + dt.timedelta(minutes=settings.jwt_expire_minutes)
     payload = {"sub": str(user.id), "username": user.username,
                "role": user.role, "exp": expire}
     return jwt.encode(payload, settings.jwt_secret, algorithm=settings.jwt_algorithm)

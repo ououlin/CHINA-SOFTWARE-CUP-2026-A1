@@ -2,7 +2,7 @@
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from ..audit_log import record_audit
@@ -94,14 +94,36 @@ def list_feedback(
 @router.get("/stats", response_model=FeedbackStats)
 def feedback_stats(db: Session = Depends(get_db),
                    user: User = Depends(get_current_user)):
-    """满意度与修正知识统计（全局）。"""
-    rows = db.execute(select(LLMFeedback)).scalars().all()
-    up = sum(1 for f in rows if f.vote == "up")
-    down = sum(1 for f in rows if f.vote == "down")
-    corrections = sum(1 for f in rows if f.correction_text and f.status == "active"
-                      and getattr(f, "pub_status", "published") == "published")
-    pending = sum(1 for f in rows if f.correction_text and f.status == "active"
-                  and getattr(f, "pub_status", "published") == "pending_review")
+    """满意度与修正知识统计（全局）- 使用SQL聚合查询优化性能。"""
+    # 使用SQL聚合查询，避免全表扫描到内存
+    up = db.execute(
+        select(func.count(LLMFeedback.id))
+        .where(LLMFeedback.vote == "up", LLMFeedback.status == "active")
+    ).scalar() or 0
+
+    down = db.execute(
+        select(func.count(LLMFeedback.id))
+        .where(LLMFeedback.vote == "down", LLMFeedback.status == "active")
+    ).scalar() or 0
+
+    corrections = db.execute(
+        select(func.count(LLMFeedback.id))
+        .where(
+            LLMFeedback.correction_text != "",
+            LLMFeedback.status == "active",
+            LLMFeedback.pub_status == "published",
+        )
+    ).scalar() or 0
+
+    pending = db.execute(
+        select(func.count(LLMFeedback.id))
+        .where(
+            LLMFeedback.correction_text != "",
+            LLMFeedback.status == "active",
+            LLMFeedback.pub_status == "pending_review",
+        )
+    ).scalar() or 0
+
     return FeedbackStats(up=up, down=down, corrections=corrections, pending=pending)
 
 

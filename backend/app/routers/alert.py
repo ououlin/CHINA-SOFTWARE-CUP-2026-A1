@@ -31,7 +31,7 @@ def _level(score: int) -> str:
 
 def _risk_devices(db: Session) -> List[dict]:
     """规则化风险评分：故障频次 + 近 30 天 + 严重度 + 未结，越高越危险。"""
-    cutoff = dt.datetime.utcnow() - dt.timedelta(days=_RECENT_DAYS)
+    cutoff = dt.datetime.now(dt.timezone.utc).replace(tzinfo=None) - dt.timedelta(days=_RECENT_DAYS)
     out = []
     for d in db.execute(select(Device)).scalars().all():
         recs = d.records

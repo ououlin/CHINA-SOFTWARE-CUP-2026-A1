@@ -1,0 +1,82 @@
+# ====================================================================
+# Docker 构建忽略清单：减少 build context 体积、避免机密进镜像
+# 同时作用于 backend 与 frontend 两个构建上下文
+# ====================================================================
+
+# ─── Python 后端 ──────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+env/
+.Python
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# ─── 数据库与运行期产物 ────────────────────────────────────
+*.db
+*.sqlite
+*.sqlite3
+backend/app.db
+backend/app/uploads/
+uploads/
+
+# ─── 前端 ──────────────────────────────────────────────────
+node_modules/
+frontend/dist/
+frontend/node_modules/
+.vite/
+*.local
+
+# ─── 模型缓存（fastembed / onnx，体积大）─────────────────
+.cache/
+*.onnx
+models_cache/
+
+# ─── 日志 ──────────────────────────────────────────────────
+*.log
+logs/
+
+# ─── 机密 / 环境变量（绝不进镜像，由 compose env_file 注入）──
+.env
+*.env
+!.env.example
+*.key
+*.pem
+secrets.*
+
+# ─── 版本控制 ──────────────────────────────────────────────
+.git/
+.gitignore
+.gitattributes
+
+# ─── IDE / 编辑器 ──────────────────────────────────────────
+.vscode/
+.idea/
+.claude/
+*.swp
+*.swo
+
+# ─── 操作系统 ──────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ─── 文档与交付物 ──────────────────────────────────────────
+_docbuild/
+交付文档/
+README.md
+
+# ─── 部署脚本（容器内不需要，宿主机编排用）─────────────────
+deploy/
+
+# ─── Docker 自身配置（避免递归进 build context）──────────
+Dockerfile
+*.dockerignore
+docker-compose*.yml

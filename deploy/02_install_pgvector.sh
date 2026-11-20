@@ -1,11 +1,10 @@
 #!/usr/bin/env bash
 # ============================================================
-# 02 编译安装 pgvector（【可选】向量索引加速）
+# 02 编译安装 pgvector（PostgreSQL 生产检索必需）
 # 需 root： sudo bash deploy/02_install_pgvector.sh
 #
-# 说明：本系统默认用 "JSON 存向量 + 应用内余弦" 即可跑通，pgvector 非必需。
-#       仅当数据量较大、需向量索引加速时再装。这也是 LoongArch 上的已知风险点，
-#       建议先用 00_smoke_test 评估、并预留时间排雷。
+# 说明：SQLite 回退可用 JSON + 应用层检索跑通演示；生产 PostgreSQL 路径
+#       使用 vector 列和 HNSW，因此必须安装 pgvector 并保留实机编译记录。
 # ============================================================
 set -euo pipefail
 
@@ -45,5 +44,4 @@ make PG_CONFIG="$PG_CONFIG" install
 echo
 echo "✅ pgvector 编译安装完成。接下来在目标库启用扩展："
 echo "   sudo -u postgres psql -d devrepair -c 'CREATE EXTENSION IF NOT EXISTS vector;'"
-echo "（注：当前应用代码以 JSON 存向量、应用内计算余弦，启用 pgvector 后若要改用"
-echo "  vector 列 + SQL 近邻检索，需按 deploy/README.md「pgvector 进阶」调整 models/retriever。）"
+echo "   sudo -u postgres psql -d devrepair -v embedding_dim=1024 -f deploy/03_migrate_pgvector.sql"

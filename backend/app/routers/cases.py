@@ -115,7 +115,7 @@ def review_case(cid: int, body: CaseReviewReq, db: Session = Depends(get_db),
         c.status = "rejected"
         c.review_note = body.note or ""
         c.reviewed_by = user.id
-        c.reviewed_at = dt.datetime.utcnow()
+        c.reviewed_at = dt.datetime.now(dt.timezone.utc).replace(tzinfo=None)
         record_audit(db, user, "case.reject", "case", c.id, f"退回案例「{c.title}」")
         db.commit()
         db.refresh(c)
@@ -147,7 +147,7 @@ def review_case(cid: int, body: CaseReviewReq, db: Session = Depends(get_db),
     c.status = "approved"
     c.review_note = body.note or ""
     c.reviewed_by = user.id
-    c.reviewed_at = dt.datetime.utcnow()
+    c.reviewed_at = dt.datetime.now(dt.timezone.utc).replace(tzinfo=None)
     c.doc_id = doc.id
     record_audit(db, user, "case.approve", "case", c.id,
                  f"采纳案例「{c.title}」并入库、抽取知识图谱")

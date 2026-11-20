@@ -10,10 +10,12 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..auth import get_current_user, require_roles
+from ..config import settings
 from ..db import get_db
 from ..ingest import ingest_pdf
 from ..models import Document, User
 from ..schemas import DocumentOut
+from ..upload_guard import ensure_pdf, read_upload_limited
 
 router = APIRouter(prefix="/api/documents", tags=["documents"])
 
@@ -38,16 +40,16 @@ async def upload_pdf(
     user: User = Depends(require_roles("auditor", "admin")),
 ):
     """上传 PDF 检修手册并入库（仅审核员/管理员）。"""
-    if not (file.filename or "").lower().endswith(".pdf"):
-        raise HTTPException(status_code=400, detail="仅支持 PDF 文件")
+    data = await read_upload_limited(file, settings.max_pdf_upload_mb)
+    ensure_pdf(data, file.filename or "")
     save_path = os.path.join(UPLOAD_DIR, f"{uuid.uuid4().hex}.pdf")
     with open(save_path, "wb") as f:
-        f.write(await file.read())
+        f.write(data)
 
     try:
         doc = ingest_pdf(
             db, save_path,
-            title=title or os.path.splitext(file.filename)[0],
+            title=title or os.path.splitext(file.filename or "manual.pdf")[0],
             device_type=device_type, device_model=device_model,
         )
     except ValueError as e:

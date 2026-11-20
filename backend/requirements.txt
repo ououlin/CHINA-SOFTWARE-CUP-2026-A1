@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 # Web 框架
 fastapi==0.110.0
 uvicorn[standard]==0.29.0
@@ -9,6 +10,7 @@ pydantic-settings==2.2.1
 
 # ORM（开发期 SQLite，生产 PostgreSQL+pgvector）
 SQLAlchemy==2.0.29
+pg8000==1.31.2
 
 # 鉴权（密码哈希用标准库 pbkdf2，无需 bcrypt 原生依赖）
 PyJWT==2.8.0

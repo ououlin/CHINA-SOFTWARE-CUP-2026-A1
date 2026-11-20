@@ -2,12 +2,30 @@
   <div class="chat-page">
     <div class="messages" ref="msgBox">
       <div v-if="messages.length === 0" class="empty">
-        <el-icon :size="46" color="#c0c4cc"><ChatDotRound /></el-icon>
-        <p>输入设备故障现象、上传故障图片，或指定设备型号，例如：</p>
-        <div class="examples">
-          <el-tag v-for="q in examples" :key="q" class="example"
-                  @click="useExample(q)">{{ q }}</el-tag>
+        <div class="empty-illus">
+          <el-icon :size="64" color="var(--brand)"><ChatDotRound /></el-icon>
         </div>
+        <h3 class="empty-title">您好，我是检修智能助手</h3>
+        <p class="empty-desc">支持文本提问、故障图片识别、语音输入；可指定设备型号获得更精准的检索结果。</p>
+        <div class="examples">
+          <div v-for="q in examples" :key="q" class="example"
+               @click="useExample(q)">
+            <el-icon class="ex-icon"><Promotion /></el-icon>
+            <span>{{ q }}</span>
+            <el-icon class="ex-arrow"><Right /></el-icon>
+          </div>
+        </div>
+      </div>
+
+      <!-- SSE 断线重连提示条 -->
+      <div v-if="reconnect.status" class="reconnect-bar" :class="reconnect.status">
+        <el-icon v-if="reconnect.status === 'reconnecting'" class="is-loading">
+          <Loading />
+        </el-icon>
+        <el-icon v-else-if="reconnect.status === 'failed'"><WarnTriangleFilled /></el-icon>
+        <span>{{ reconnectMsg }}</span>
+        <el-button v-if="reconnect.status === 'failed'" size="small" type="primary"
+                   @click="retryLastSend">点击重试</el-button>
       </div>
 
       <div v-for="(m, i) in messages" :key="i" class="msg" :class="m.role">
@@ -17,6 +35,20 @@
         </div>
         <div class="bubble">
           <img v-if="m.image" :src="m.image" class="msg-image" />
+
+          <!-- AI 思考中的骨架屏（取代"正在思考…"文字） -->
+          <div v-if="m.role === 'assistant' && m.loading && !m.content"
+               class="think-skeleton">
+            <div class="ts-line skeleton-box w-90"></div>
+            <div class="ts-line skeleton-box w-100"></div>
+            <div class="ts-line skeleton-box w-70"></div>
+            <div class="ts-line skeleton-box w-100"></div>
+            <div class="ts-line skeleton-box w-50"></div>
+            <div class="ts-hint">
+              <span class="dot-loader"><i></i><i></i><i></i></span>
+              AI 正在检索知识库与生成回答…
+            </div>
+          </div>
 
           <div v-if="m.appliedCorrections && m.appliedCorrections.length"
                class="applied-corr">
@@ -35,7 +67,30 @@
           </div>
 
           <div v-if="m.role === 'user'" class="content">{{ m.content }}</div>
-          <div v-else class="content" :class="{ typing: m.streaming }">{{ m.content || (m.loading ? '正在思考…' : '') }}<span v-if="m.streaming" class="type-cursor"></span></div>
+          <!-- AI 思考中无内容时仅显示骨架屏；流式输出时显示打字光标 -->
+          <div v-else-if="m.streaming && m.content" class="content typing">
+            {{ m.content }}<span class="type-cursor"></span>
+          </div>
+          <div v-else-if="!m.loading && m.content" class="markdown-body"
+               v-html="renderMarkdown(m.content || '')"
+               @click="onCiteClick($event, m)"></div>
+
+          <div v-if="m.confidence" class="confidence-box" :class="`conf-${m.confidence.level}`">
+            <div class="conf-head">
+              <el-icon><CircleCheck /></el-icon>
+              <span>回答可信度：{{ confidenceLabel(m.confidence.level) }} · {{ Math.round((m.confidence.score || 0) * 100) }}分</span>
+            </div>
+            <div v-if="m.confidence.reasons && m.confidence.reasons.length" class="conf-tags">
+              <el-tag v-for="r in m.confidence.reasons" :key="r" size="small" effect="plain">{{ r }}</el-tag>
+            </div>
+            <div v-if="m.confidence.warnings && m.confidence.warnings.length" class="conf-warnings">
+              <span v-for="w in m.confidence.warnings" :key="w">{{ w }}</span>
+            </div>
+          </div>
+
+          <el-alert v-if="m.safety?.requires_human_confirmation"
+                    class="safety-alert" type="warning" :closable="false" show-icon
+                    title="高风险作业需人工确认" :description="m.safety.message" />
 
           <div v-if="m.rewritten" class="rewrite-hint">
             <el-icon><Search /></el-icon>
@@ -57,6 +112,20 @@
             </div>
             <div class="graph-rels">
               <span v-for="(g, gi) in m.graph" :key="gi" class="graph-rel">{{ g }}</span>
+            </div>
+          </div>
+
+          <div v-if="m.recommended_sops && m.recommended_sops.length" class="sop-box">
+            <div class="sop-title">
+              <el-icon><Tickets /></el-icon>&nbsp;推荐作业指引
+            </div>
+            <div v-for="s in m.recommended_sops" :key="s.id" class="sop-item">
+              <div class="sop-head">
+                <strong>{{ s.name }}</strong>
+                <el-tag size="small" type="success" effect="plain">{{ Math.round((s.score || 0) * 100) }}%</el-tag>
+              </div>
+              <div class="sop-meta">{{ s.device_type || '通用类型' }} · {{ s.repair_level || '未指定等级' }}</div>
+              <div class="sop-summary">{{ s.summary }}</div>
             </div>
           </div>
 
@@ -111,10 +180,14 @@
 
     <div class="composer">
       <div class="composer-left">
-        <el-input v-model="deviceModel" class="device" placeholder="设备型号(可选)"
-                  clearable>
-          <template #prefix><el-icon><Cpu /></el-icon></template>
-        </el-input>
+        <el-select v-model="selectedDeviceId" class="device" placeholder="选择设备(可选)"
+                   filterable clearable @change="onDeviceChange">
+          <el-option v-for="d in devices" :key="d.id" :label="`${d.name} · ${d.code}`"
+                     :value="d.id">
+            <span>{{ d.name }} · {{ d.code }}</span>
+            <small class="dev-opt">{{ d.device_model || d.device_type }}</small>
+          </el-option>
+        </el-select>
         <el-upload :auto-upload="false" :show-file-list="false" accept="image/*"
                    :on-change="onPickImage" class="img-upload">
           <el-button :icon="Picture">故障图片</el-button>
@@ -137,15 +210,18 @@
                   @keydown.enter.exact.prevent="send" />
       </div>
       <el-button type="primary" :loading="sending" @click="send">发送</el-button>
+      <el-button type="warning" plain @click="goAgent" :icon="Position">Agent 诊断</el-button>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, nextTick, onBeforeUnmount } from 'vue'
+import { ref, nextTick, onMounted, onBeforeUnmount, reactive, computed } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
-  Picture, CircleClose, View, EditPen, MagicStick, CircleCheck, Microphone, Search, Share,
+  Picture, CircleClose, View, EditPen, MagicStick, CircleCheck, Microphone, Search, Share, Tickets,
+  Loading, WarnTriangleFilled, Promotion, Right, Position,
 } from '@element-plus/icons-vue'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
@@ -162,6 +238,7 @@ function renderMarkdown(text) {
 }
 
 const pct = (v) => `${Math.round((v || 0) * 100)}%`
+const confidenceLabel = (level) => ({ high: '高', medium: '中', low: '低' }[level] || '中')
 
 function onCiteClick(e, m) {
   const ref = e.target.closest('.cite-ref')
@@ -173,14 +250,35 @@ function onCiteClick(e, m) {
 }
 
 const auth = useAuthStore()
+const router = useRouter()
+
+function goAgent() {
+  router.push({ path: '/agent', query: input.value.trim() ? { q: input.value.trim() } : {} })
+}
 const messages = ref([])
 const input = ref('')
 const deviceModel = ref('')
+const selectedDeviceId = ref(null)
+const devices = ref([])
 const sending = ref(false)
 const msgBox = ref(null)
 
 const pickedFile = ref(null)
 const pickedPreview = ref('')
+
+// ---- SSE 断线重连状态 ----
+// status: '' | 'reconnecting' | 'failed'
+// 重连最多 3 次，间隔递增 1s / 2s / 4s
+const reconnect = reactive({ status: '', attempt: 0 })
+const reconnectMsg = computed(() => {
+  if (reconnect.status === 'reconnecting') {
+    return `连接中断，正在重连…（第 ${reconnect.attempt} / 3 次）`
+  }
+  if (reconnect.status === 'failed') return '网络异常，请刷新页面或点击重试'
+  return ''
+})
+// 缓存最近一次请求参数，便于断线后重试
+let lastRequest = null
 
 const examples = [
   '发动机怠速不稳怎么排查？',
@@ -188,6 +286,22 @@ const examples = [
   '气门间隙标准是多少，过大有什么影响？',
   '发动机过热如何处理？',
 ]
+
+async function loadDevices() {
+  try {
+    const { data } = await api.get('/devices')
+    devices.value = data || []
+  } catch (e) {
+    devices.value = []
+  }
+}
+
+function onDeviceChange(id) {
+  const d = devices.value.find((x) => x.id === id)
+  deviceModel.value = d ? d.device_model : ''
+}
+
+onMounted(loadDevices)
 
 function useExample(q) {
   input.value = q
@@ -284,6 +398,7 @@ async function send() {
 
   const assistant = {
     role: 'assistant', content: '', citations: [], vl: '', rewritten: '', graph: [],
+    confidence: null, recommended_sops: [], safety: null,
     loading: true, streaming: true, highlightCite: 0,
     qaId: null, appliedCorrections: [], vote: '',
     feedbackOpen: false, correctionText: '', feedbackSaved: false, saving: false,
@@ -291,22 +406,39 @@ async function send() {
   messages.value.push(assistant)
   sending.value = true
   const hasImage = !!pickedFile.value
+
+  // 缓存请求参数，便于断线后重试
+  lastRequest = {
+    hasImage,
+    query,
+    history,
+    file: pickedFile.value,
+    preview: pickedPreview.value,
+    deviceModel: deviceModel.value,
+    deviceId: selectedDeviceId.value,
+  }
   input.value = ''
+  if (hasImage) clearImage()
   await scrollBottom()
 
+  await runStream(assistant, lastRequest)
+}
+
+// 执行 SSE 请求与流式解析；遇到网络异常时触发自动重连
+async function runStream(assistant, req) {
   try {
     let resp
-    if (hasImage) {
+    if (req.hasImage) {
       const fd = new FormData()
-      fd.append('image', pickedFile.value)
-      if (query) fd.append('query', query)
-      if (deviceModel.value) fd.append('device_model', deviceModel.value)
+      fd.append('image', req.file)
+      if (req.query) fd.append('query', req.query)
+      if (req.deviceModel) fd.append('device_model', req.deviceModel)
+      if (req.deviceId) fd.append('device_id', String(req.deviceId))
       resp = await fetch('/api/chat/ask_image', {
         method: 'POST',
         headers: { Authorization: `Bearer ${auth.token}` },
         body: fd,
       })
-      clearImage()
     } else {
       resp = await fetch('/api/chat/ask_stream', {
         method: 'POST',
@@ -314,7 +446,12 @@ async function send() {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${auth.token}`,
         },
-        body: JSON.stringify({ query, device_model: deviceModel.value || null, history }),
+        body: JSON.stringify({
+          query: req.query,
+          device_model: req.deviceModel || null,
+          device_id: req.deviceId || null,
+          history: req.history,
+        }),
       })
     }
     if (!resp.ok) {
@@ -346,15 +483,83 @@ async function send() {
       for (const block of blocks) handleEvent(block, assistant)
       await scrollBottom()
     }
+    // 流正常结束：清理重连状态
+    reconnect.status = ''
+    reconnect.attempt = 0
   } catch (e) {
-    assistant.content = '抱歉：' + e.message
-    ElMessage.error(e.message)
+    // 网络异常 / 流中断：进入自动重连流程
+    const isNetworkErr = e instanceof TypeError
+      || /fetch|network|Failed to fetch/i.test(e.message)
+    if (isNetworkErr && reconnect.attempt < 3) {
+      reconnect.attempt += 1
+      reconnect.status = 'reconnecting'
+      await scrollBottom()
+      // 间隔递增：1s / 2s / 4s
+      const delay = 1000 * Math.pow(2, reconnect.attempt - 1)
+      await new Promise((r) => setTimeout(r, delay))
+      // 重连前重置助手消息状态，避免残留半截内容
+      assistant.loading = true
+      assistant.streaming = true
+      assistant.content = ''
+      assistant.citations = []
+      assistant.vl = ''
+      assistant.rewritten = ''
+      assistant.graph = []
+      assistant.confidence = null
+      assistant.recommended_sops = []
+      assistant.safety = null
+      await runStream(assistant, req)
+    } else if (isNetworkErr) {
+      // 重连失败：提示用户手动重试
+      reconnect.status = 'failed'
+      assistant.loading = false
+      assistant.streaming = false
+      assistant.content = '⚠️ 网络异常，AI 回答中断。请点击上方"点击重试"按钮重新生成。'
+      await scrollBottom()
+    } else {
+      reconnect.status = ''
+      assistant.content = '抱歉：' + e.message
+      ElMessage.error(e.message)
+    }
   } finally {
     assistant.loading = false
     assistant.streaming = false
     sending.value = false
     await scrollBottom()
   }
+}
+
+// 用户点击重试按钮：重置重连计数，重新发起请求
+async function retryLastSend() {
+  if (!lastRequest) return
+  reconnect.attempt = 0
+  reconnect.status = 'reconnecting'
+  // 取最后一条助手消息复用；若已被删除则新建
+  let assistant = messages.value[messages.value.length - 1]
+  if (!assistant || assistant.role !== 'assistant') {
+    assistant = {
+      role: 'assistant', content: '', citations: [], vl: '', rewritten: '', graph: [],
+      confidence: null, recommended_sops: [], safety: null,
+      loading: true, streaming: true, highlightCite: 0,
+      qaId: null, appliedCorrections: [], vote: '',
+      feedbackOpen: false, correctionText: '', feedbackSaved: false, saving: false,
+    }
+    messages.value.push(assistant)
+  } else {
+    assistant.loading = true
+    assistant.streaming = true
+    assistant.content = ''
+    assistant.citations = []
+    assistant.vl = ''
+    assistant.rewritten = ''
+    assistant.graph = []
+    assistant.confidence = null
+    assistant.recommended_sops = []
+    assistant.safety = null
+  }
+  sending.value = true
+  await scrollBottom()
+  await runStream(assistant, lastRequest)
 }
 
 function handleEvent(block, assistant) {
@@ -373,6 +578,12 @@ function handleEvent(block, assistant) {
       assistant.rewritten = JSON.parse(data)
     } else if (event === 'graph') {
       assistant.graph = JSON.parse(data)
+    } else if (event === 'sops') {
+      assistant.recommended_sops = JSON.parse(data)
+    } else if (event === 'safety') {
+      assistant.safety = JSON.parse(data)
+    } else if (event === 'confidence') {
+      assistant.confidence = JSON.parse(data)
     } else if (event === 'citations') {
       assistant.citations = JSON.parse(data)
     } else if (event === 'corrections') {
@@ -429,33 +640,109 @@ async function saveCorrection(m) {
 <style scoped>
 .chat-page { height: 100%; display: flex; flex-direction: column; }
 .messages {
-  flex: 1; overflow-y: auto; padding: 8px 4px; background: #fff;
-  border-radius: 10px; border: 1px solid #ebeef5;
+  flex: 1; overflow-y: auto; padding: 8px 4px; background: var(--bg-surface);
+  border-radius: 10px; border: 1px solid var(--bd);
 }
-.empty { text-align: center; color: #8a8f99; margin-top: 60px; }
-.examples { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 12px; }
-.example { cursor: pointer; }
+.empty {
+  text-align: center; color: var(--muted); margin-top: 8vh; padding: 0 16px;
+  display: flex; flex-direction: column; align-items: center;
+}
+.empty-illus {
+  width: 96px; height: 96px; border-radius: 50%;
+  background: var(--bubble-ai); display: flex; align-items: center; justify-content: center;
+  margin-bottom: 18px; box-shadow: 0 6px 20px rgba(31, 111, 235, .14);
+  animation: emptyBreath 2.6s ease-in-out infinite;
+}
+@keyframes emptyBreath {
+  0%, 100% { transform: scale(1); box-shadow: 0 6px 20px rgba(31, 111, 235, .14); }
+  50% { transform: scale(1.05); box-shadow: 0 8px 28px rgba(31, 111, 235, .22); }
+}
+.empty-title { font-size: 20px; font-weight: 700; color: var(--ink); margin: 0 0 6px; }
+.empty-desc { font-size: 13.5px; color: var(--muted); margin: 0 0 22px; max-width: 520px; line-height: 1.7; }
+.examples {
+  display: flex; flex-direction: column; gap: 10px; width: 100%;
+  max-width: 540px;
+}
+.example {
+  cursor: pointer; display: flex; align-items: center; gap: 10px;
+  padding: 12px 16px; border: 1px solid var(--bd); border-radius: 10px;
+  background: var(--bg-surface); color: var(--ink-soft);
+  transition: all .18s ease; font-size: 14px; text-align: left;
+}
+.example:hover {
+  border-color: var(--brand); color: var(--brand);
+  background: var(--bubble-user); transform: translateX(3px);
+  box-shadow: 0 4px 12px rgba(31, 111, 235, .12);
+}
+.example .ex-icon { color: var(--brand); flex: none; }
+.example span { flex: 1; }
+.example .ex-arrow { color: var(--muted); flex: none; transition: transform .18s; }
+.example:hover .ex-arrow { transform: translateX(3px); color: var(--brand); }
+
+/* SSE 断线重连提示条 */
+.reconnect-bar {
+  display: flex; align-items: center; gap: 10px; justify-content: center;
+  margin: 8px 16px; padding: 9px 14px; border-radius: 8px; font-size: 13px;
+}
+.reconnect-bar.reconnecting {
+  background: #fdf6ec; color: #9a651f; border: 1px solid #faecd8;
+}
+html.dark .reconnect-bar.reconnecting {
+  background: rgba(154, 101, 31, .14); color: #ffce82; border-color: rgba(255, 180, 84, .3);
+}
+.reconnect-bar.failed {
+  background: #fef0f0; color: #b42318; border: 1px solid #fde2e2;
+}
+html.dark .reconnect-bar.failed {
+  background: rgba(180, 35, 24, .14); color: #ff9b9b; border-color: rgba(255, 107, 107, .3);
+}
+.reconnect-bar .is-loading { animation: rotateSpin 1s linear infinite; }
+@keyframes rotateSpin { from { transform: rotate(0); } to { transform: rotate(360deg); } }
+
+/* AI 思考骨架屏 */
+.think-skeleton {
+  background: var(--bubble-ai); padding: 14px 16px; border-radius: 10px;
+  margin-bottom: 6px;
+}
+.ts-line { height: 11px; margin-bottom: 9px; }
+.ts-line:last-of-type { margin-bottom: 12px; }
+.ts-hint {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 12px; color: var(--muted);
+}
+.dot-loader { display: inline-flex; gap: 3px; }
+.dot-loader i {
+  width: 5px; height: 5px; border-radius: 50%; background: var(--brand);
+  animation: dotBounce 1.2s ease-in-out infinite;
+}
+.dot-loader i:nth-child(2) { animation-delay: .15s; }
+.dot-loader i:nth-child(3) { animation-delay: .3s; }
+@keyframes dotBounce {
+  0%, 80%, 100% { transform: scale(.6); opacity: .4; }
+  40% { transform: scale(1); opacity: 1; }
+}
 .msg { display: flex; gap: 10px; padding: 14px 16px; }
 .msg.user { flex-direction: row-reverse; }
 .avatar {
   width: 34px; height: 34px; border-radius: 8px; flex: none;
   display: flex; align-items: center; justify-content: center; color: #fff;
 }
-.msg.user .avatar { background: #1f6feb; }
+.msg.user .avatar { background: var(--brand); }
 .msg.assistant .avatar { background: #16a34a; }
 .bubble { max-width: 78%; }
 .msg-image {
   max-width: 220px; max-height: 180px; border-radius: 8px;
-  margin-bottom: 8px; display: block; border: 1px solid #e4e7ed;
+  margin-bottom: 8px; display: block; border: 1px solid var(--bd);
 }
 .content {
-  background: #f2f6fc; padding: 10px 14px; border-radius: 10px;
+  background: var(--bubble-ai); padding: 10px 14px; border-radius: 10px;
   white-space: pre-wrap; line-height: 1.7; word-break: break-word;
+  color: var(--ink-soft);
 }
-.msg.user .content { background: #e3f0ff; }
+.msg.user .content { background: var(--bubble-user); }
 .type-cursor {
   display: inline-block; width: 7px; height: 15px; margin-left: 2px;
-  background: #1f6feb; vertical-align: -2px; border-radius: 1px;
+  background: var(--brand); vertical-align: -2px; border-radius: 1px;
   animation: cursorBlink 1s steps(1) infinite;
 }
 @keyframes cursorBlink { 0%, 50% { opacity: 1; } 50.01%, 100% { opacity: 0; } }
@@ -469,44 +756,45 @@ async function saveCorrection(m) {
 .content.typing { display: block; }
 .type-cursor {
   display: inline-block; width: 7px; height: 16px; margin-left: 2px;
-  background: #1f6feb; border-radius: 1px; vertical-align: -3px;
+  background: var(--brand); border-radius: 1px; vertical-align: -3px;
   animation: blink 1s steps(2, start) infinite;
 }
 @keyframes blink { 50% { opacity: 0; } }
 
 /* Markdown 渲染样式（完成后渐显，避免逐字 reflow 抖动）*/
 .markdown-body {
-  background: #f2f6fc; padding: 12px 16px; border-radius: 10px;
-  line-height: 1.75; word-break: break-word; color: #1f2329;
+  background: var(--bubble-ai); padding: 12px 16px; border-radius: 10px;
+  line-height: 1.75; word-break: break-word; color: var(--ink);
   animation: mdFade .35s ease;
 }
 @keyframes mdFade { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: none; } }
 .markdown-body :deep(p) { margin: 6px 0; }
 .markdown-body :deep(h1),
 .markdown-body :deep(h2),
-.markdown-body :deep(h3) { margin: 12px 0 6px; font-weight: 700; line-height: 1.4; }
+.markdown-body :deep(h3) { margin: 12px 0 6px; font-weight: 700; line-height: 1.4; color: var(--ink); }
 .markdown-body :deep(h3) { font-size: 15px; }
 .markdown-body :deep(ul),
 .markdown-body :deep(ol) { padding-left: 22px; margin: 6px 0; }
 .markdown-body :deep(li) { margin: 3px 0; }
-.markdown-body :deep(strong) { color: #0f3270; }
+.markdown-body :deep(strong) { color: var(--brand-deep); }
+html.dark .markdown-body :deep(strong) { color: var(--brand); }
 .markdown-body :deep(code) {
-  background: #e7ecf3; color: #c7254e; padding: 1px 6px;
+  background: var(--code-bg); color: var(--code-color); padding: 1px 6px;
   border-radius: 5px; font-size: 13px;
 }
 .markdown-body :deep(pre) {
-  background: #1e1e1e; color: #e6e6e6; padding: 12px 14px;
+  background: var(--pre-bg); color: var(--pre-color); padding: 12px 14px;
   border-radius: 8px; overflow-x: auto; margin: 8px 0;
 }
-.markdown-body :deep(pre code) { background: none; color: #e6e6e6; padding: 0; }
+.markdown-body :deep(pre code) { background: none; color: var(--pre-color); padding: 0; }
 .markdown-body :deep(blockquote) {
-  margin: 8px 0; padding: 6px 12px; color: #5a6677;
-  background: #eaeef5; border-left: 4px solid #1f6feb; border-radius: 0 6px 6px 0;
+  margin: 8px 0; padding: 6px 12px; color: var(--quote-text);
+  background: var(--quote-bg); border-left: 4px solid var(--brand); border-radius: 0 6px 6px 0;
 }
 .markdown-body :deep(table) { border-collapse: collapse; margin: 8px 0; }
 .markdown-body :deep(th),
-.markdown-body :deep(td) { border: 1px solid #dfe3ea; padding: 5px 10px; }
-.markdown-body :deep(th) { background: #eef1f6; }
+.markdown-body :deep(td) { border: 1px solid var(--bd); padding: 5px 10px; }
+.markdown-body :deep(th) { background: var(--bg-surface-2); color: var(--ink); }
 
 /* M5 修正横幅：呼吸灯 Badge */
 .corr-badge { animation: breathe 2.4s ease-in-out infinite; }
@@ -514,28 +802,43 @@ async function saveCorrection(m) {
   0%, 100% { box-shadow: 0 0 0 0 rgba(230, 162, 60, .5); }
   50% { box-shadow: 0 0 0 5px rgba(230, 162, 60, 0); }
 }
+.confidence-box {
+  margin-top: 8px; border-radius: 8px; padding: 9px 12px; border: 1px solid var(--bd);
+  background: var(--bg-surface-2); font-size: 12px;
+}
+.conf-head { display: flex; align-items: center; gap: 5px; font-weight: 600; margin-bottom: 6px; }
+.conf-high { border-color: #b7ebc6; background: #f0f9f2; color: #237a3b; }
+.conf-medium { border-color: #faecd8; background: #fdf6ec; color: #9a651f; }
+.conf-low { border-color: #fde2e2; background: #fef0f0; color: #b42318; }
+html.dark .conf-high { border-color: rgba(35, 122, 59, .4); background: rgba(35, 122, 59, .14); }
+html.dark .conf-medium { border-color: rgba(154, 101, 31, .4); background: rgba(154, 101, 31, .14); }
+html.dark .conf-low { border-color: rgba(180, 35, 24, .4); background: rgba(180, 35, 24, .14); }
+.conf-tags { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 4px; }
+.conf-warnings { display: flex; flex-direction: column; gap: 2px; color: #b42318; }
 .rewrite-hint {
   display: flex; align-items: center; gap: 5px; margin-top: 8px;
-  font-size: 12px; color: #45627f; background: #eef3fb;
-  border: 1px solid #dce7f7; border-radius: 6px; padding: 5px 10px;
+  font-size: 12px; color: var(--muted); background: var(--bg-surface-2);
+  border: 1px solid var(--bd); border-radius: 6px; padding: 5px 10px;
 }
 .graph-box {
-  margin-top: 10px; background: #f4f0fb; border: 1px solid #e4d9f5;
+  margin-top: 10px; background: rgba(124, 91, 191, .08); border: 1px solid rgba(124, 91, 191, .25);
   border-radius: 8px; padding: 10px 12px;
 }
 .graph-title { font-size: 12px; color: #7c5bbf; display: flex; align-items: center; margin-bottom: 8px; }
+html.dark .graph-title { color: #b69ce6; }
 .graph-rels { display: flex; flex-wrap: wrap; gap: 6px; }
 .graph-rel {
-  font-size: 12px; color: #5b4196; background: #fff;
-  border: 1px solid #e4d9f5; border-radius: 12px; padding: 3px 10px;
+  font-size: 12px; color: #5b4196; background: var(--bg-surface);
+  border: 1px solid rgba(124, 91, 191, .25); border-radius: 12px; padding: 3px 10px;
 }
+html.dark .graph-rel { color: #c4aef5; }
 .vl-box { margin-top: 8px; border-radius: 8px; }
-.vl-content { color: #606266; line-height: 1.7; white-space: pre-wrap; }
+.vl-content { color: var(--ink-soft); line-height: 1.7; white-space: pre-wrap; }
 .citations {
-  margin-top: 10px; background: #fafafa; border: 1px solid #eee;
+  margin-top: 10px; background: var(--bg-surface-2); border: 1px solid var(--bd);
   border-radius: 8px; padding: 10px 12px;
 }
-.cite-title { font-size: 12px; color: #8a8f99; margin-bottom: 8px; }
+.cite-title { font-size: 12px; color: var(--muted); margin-bottom: 8px; }
 .cite {
   margin-bottom: 8px; font-size: 13px; padding: 8px 10px; border-radius: 8px;
   border: 1px solid transparent; transition: background .4s, border-color .4s;
@@ -546,37 +849,39 @@ async function saveCorrection(m) {
   100% { background: transparent; border-color: transparent; }
 }
 .cite-head { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-.cite-src { color: #14418c; flex: 1; min-width: 120px; }
+.cite-src { color: var(--brand-deep); flex: 1; min-width: 120px; }
+html.dark .cite-src { color: var(--brand); }
 .cite-scores { display: flex; align-items: center; gap: 10px; }
 .sc-comp {
-  font-size: 12px; font-weight: 600; color: #1f2329;
-  background: #eef1f6; border-radius: 5px; padding: 1px 7px;
+  font-size: 12px; font-weight: 600; color: var(--ink);
+  background: var(--bg-surface-2); border-radius: 5px; padding: 1px 7px;
 }
 .cite-scores .mini { display: flex; align-items: center; gap: 4px; }
-.cite-scores .lbl { font-size: 11px; color: #9aa0ab; font-style: normal; }
+.cite-scores .lbl { font-size: 11px; color: var(--muted); font-style: normal; }
 .cite-scores .bar {
-  width: 46px; height: 6px; border-radius: 3px; background: #edf0f4; overflow: hidden;
+  width: 46px; height: 6px; border-radius: 3px; background: var(--bg-hover); overflow: hidden;
 }
 .cite-scores .bar b { display: block; height: 100%; border-radius: 3px; transition: width .5s ease; }
-.cite-content { color: #606266; margin-top: 5px; line-height: 1.6; }
+.cite-content { color: var(--ink-soft); margin-top: 5px; line-height: 1.6; }
 .cite-ref {
-  color: #1f6feb; cursor: pointer; font-weight: 600;
+  color: var(--brand); cursor: pointer; font-weight: 600;
   padding: 0 1px; border-radius: 3px; transition: background .15s;
 }
-.cite-ref:hover { background: #dbe9ff; }
+.cite-ref:hover { background: var(--bubble-user); }
 
 /* M5 反馈增强：采纳的人工修正 */
 .applied-corr { margin-bottom: 8px; }
 .ac-collapse { margin-top: 4px; border: none; }
 .ac-collapse :deep(.el-collapse-item__header) {
   height: 28px; line-height: 28px; font-size: 12px; color: #b88230; border: none;
+  background: transparent;
 }
-.ac-collapse :deep(.el-collapse-item__wrap) { border: none; }
+.ac-collapse :deep(.el-collapse-item__wrap) { border: none; background: transparent; }
 .ac-item {
-  background: #fdf6ec; border: 1px solid #faecd8; border-radius: 6px;
+  background: rgba(184, 130, 48, .08); border: 1px solid rgba(184, 130, 48, .25); border-radius: 6px;
   padding: 8px 10px; margin-bottom: 6px;
 }
-.ac-q { font-size: 12px; color: #909399; margin-bottom: 3px; }
+.ac-q { font-size: 12px; color: var(--muted); margin-bottom: 3px; }
 .ac-t { color: #b88230; line-height: 1.6; }
 
 /* M5 反馈条 */
@@ -584,10 +889,10 @@ async function saveCorrection(m) {
   display: flex; align-items: center; gap: 8px; margin-top: 10px;
   flex-wrap: wrap;
 }
-.fb-label { font-size: 12px; color: #909399; }
+.fb-label { font-size: 12px; color: var(--muted); }
 .fb-saved { font-size: 12px; color: #67c23a; display: inline-flex; align-items: center; gap: 3px; }
 .correction-box {
-  margin-top: 8px; background: #fafafa; border: 1px solid #eee;
+  margin-top: 8px; background: var(--bg-surface-2); border: 1px solid var(--bd);
   border-radius: 8px; padding: 10px;
 }
 .cb-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 8px; }
@@ -600,11 +905,11 @@ async function saveCorrection(m) {
   position: relative; display: inline-block; margin-bottom: 6px;
 }
 .preview img {
-  max-height: 64px; border-radius: 6px; border: 1px solid #e4e7ed; display: block;
+  max-height: 64px; border-radius: 6px; border: 1px solid var(--bd); display: block;
 }
 .preview .remove {
   position: absolute; top: -8px; right: -8px; cursor: pointer;
-  background: #fff; border-radius: 50%; color: #f56c6c; font-size: 18px;
+  background: var(--bg-surface); border-radius: 50%; color: #f56c6c; font-size: 18px;
 }
 .composer .el-button { height: 60px; }
 .img-upload :deep(.el-upload) { width: 100%; }

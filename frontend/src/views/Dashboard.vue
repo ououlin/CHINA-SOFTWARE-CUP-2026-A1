@@ -1,11 +1,12 @@
 <template>
-  <div class="dash" v-loading="loading" element-loading-background="rgba(11,15,25,.6)">
+  <div class="dash">
     <!-- 欢迎横幅 -->
     <div class="hero">
       <div class="hero-grid"></div>
       <div class="hero-text">
+        <div class="hero-kicker">参赛项目驾驶舱 · 青年突击队“人工智能＋”创新创效专项赛</div>
         <h2>{{ greeting }}，{{ userName }}</h2>
-        <p>{{ todayStr }} · 设备检修知识检索与作业系统 · 运营总览</p>
+        <p>{{ todayStr }} · 设备检修知识检索与作业系统 · 攻坚运行总览</p>
       </div>
       <div class="hero-stats">
         <div class="hs"><div class="hsn">{{ dv('device_total') }}</div><div class="hsl">在册设备</div></div>
@@ -20,25 +21,42 @@
 
     <!-- 指标卡片 -->
     <div class="cards">
-      <div v-for="c in cardDefs" :key="c.key" class="card"
-           :class="{ alert: c.alert && Number(cards[c.key]) > 0 }">
-        <div class="card-head">
-          <span class="card-label">{{ c.label }}</span>
-          <el-icon class="card-ic"><component :is="c.icon" /></el-icon>
+      <template v-if="loading">
+        <!-- 加载骨架卡片 -->
+        <div v-for="n in 8" :key="'sk-' + n" class="card sk-card">
+          <div class="card-head">
+            <div class="skeleton-box sk-line w-50"></div>
+            <div class="skeleton-box sk-circle" style="width:18px;height:18px;border-radius:50%"></div>
+          </div>
+          <div class="card-body">
+            <div class="skeleton-box sk-line lg w-70" style="margin-top: 4px;"></div>
+          </div>
+          <div class="card-foot">
+            <div class="skeleton-box sk-line sm w-50"></div>
+          </div>
         </div>
-        <div class="card-body">
-          <span class="card-num">{{ cardValue(c) }}</span>
-          <span v-if="c.unit" class="card-unit">{{ c.unit }}</span>
+      </template>
+      <template v-else>
+        <div v-for="c in cardDefs" :key="c.key" class="card"
+             :class="{ alert: c.alert && Number(cards[c.key]) > 0 }">
+          <div class="card-head">
+            <span class="card-label">{{ c.label }}</span>
+            <el-icon class="card-ic"><component :is="c.icon" /></el-icon>
+          </div>
+          <div class="card-body">
+            <span class="card-num">{{ cardValue(c) }}</span>
+            <span v-if="c.unit" class="card-unit">{{ c.unit }}</span>
+          </div>
+          <div class="card-foot">
+            <svg v-if="c.spark && trendData" class="spark" viewBox="0 0 100 26" preserveAspectRatio="none">
+              <polyline :points="sparkPoints(c.spark)" fill="none"
+                        :stroke="c.alert ? '#d97706' : '#0f8f83'" stroke-width="2"
+                        stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+            <span v-else-if="c.sub" class="card-sub">{{ c.sub() }}</span>
+          </div>
         </div>
-        <div class="card-foot">
-          <svg v-if="c.spark && trendData" class="spark" viewBox="0 0 100 26" preserveAspectRatio="none">
-            <polyline :points="sparkPoints(c.spark)" fill="none"
-                      :stroke="c.alert ? '#ff6b6b' : '#36a3ff'" stroke-width="2"
-                      stroke-linecap="round" stroke-linejoin="round" />
-          </svg>
-          <span v-else-if="c.sub" class="card-sub">{{ c.sub() }}</span>
-        </div>
-      </div>
+      </template>
     </div>
 
     <!-- 图表区 -->
@@ -46,13 +64,15 @@
       <el-col :span="16">
         <div class="panel">
           <div class="ptitle">近 7 天问答 / 报修趋势</div>
-          <div ref="trendEl" class="chart"></div>
+          <div v-if="loading" class="chart skeleton-box"></div>
+          <div v-show="!loading" ref="trendEl" class="chart"></div>
         </div>
       </el-col>
       <el-col :span="8">
         <div class="panel">
           <div class="ptitle">设备状态分布</div>
-          <div ref="statusEl" class="chart"></div>
+          <div v-if="loading" class="chart skeleton-box"></div>
+          <div v-show="!loading" ref="statusEl" class="chart"></div>
         </div>
       </el-col>
     </el-row>
@@ -61,30 +81,46 @@
       <el-col :span="9">
         <div class="panel">
           <div class="ptitle">高故障设备榜 Top5</div>
-          <div ref="faultEl" class="chart"></div>
+          <div v-if="loading" class="chart skeleton-box"></div>
+          <div v-show="!loading" ref="faultEl" class="chart"></div>
         </div>
       </el-col>
       <el-col :span="8">
         <div class="panel">
           <div class="ptitle">知识图谱实体分布</div>
-          <div ref="kgEl" class="chart"></div>
+          <div v-if="loading" class="chart skeleton-box"></div>
+          <div v-show="!loading" ref="kgEl" class="chart"></div>
         </div>
       </el-col>
       <el-col :span="7">
         <div class="panel ticker-panel">
           <div class="ptitle">最新报修动态</div>
           <div class="ticker">
-            <div class="ticker-track" :class="{ rolling: recent.length > 4 }">
-              <div v-for="(r, i) in tickerList" :key="i" class="ticker-item">
-                <span class="ti-sev" :class="'sev-' + r.severity">{{ r.severity }}</span>
+            <template v-if="loading">
+              <div v-for="n in 4" :key="'tsk-' + n" class="ticker-item">
+                <div class="skeleton-box" style="width:42px;height:18px;border-radius:4px;flex:none"></div>
                 <div class="ti-main">
-                  <div class="ti-top"><span class="ti-dev">{{ r.device }}</span><span class="ti-time">{{ r.time }}</span></div>
-                  <div class="ti-title">{{ r.title }}</div>
+                  <div class="ti-top">
+                    <div class="skeleton-box" style="width:80px;height:11px;"></div>
+                    <div class="skeleton-box" style="width:40px;height:11px;"></div>
+                  </div>
+                  <div class="skeleton-box" style="width:90%;height:12px;margin-top:4px;"></div>
                 </div>
-                <span class="ti-status" :class="{ done: r.status === '已完成' }">{{ r.status }}</span>
               </div>
-              <div v-if="!recent.length" class="ticker-empty">暂无报修动态</div>
-            </div>
+            </template>
+            <template v-else>
+              <div class="ticker-track" :class="{ rolling: recent.length > 4 }">
+                <div v-for="(r, i) in tickerList" :key="i" class="ticker-item">
+                  <span class="ti-sev" :class="'sev-' + r.severity">{{ r.severity }}</span>
+                  <div class="ti-main">
+                    <div class="ti-top"><span class="ti-dev">{{ r.device }}</span><span class="ti-time">{{ r.time }}</span></div>
+                    <div class="ti-title">{{ r.title }}</div>
+                  </div>
+                  <span class="ti-status" :class="{ done: r.status === '已完成' }">{{ r.status }}</span>
+                </div>
+                <div v-if="!recent.length" class="ticker-empty">暂无报修动态</div>
+              </div>
+            </template>
           </div>
         </div>
       </el-col>
@@ -182,10 +218,10 @@ const faultEl = ref(null)
 const kgEl = ref(null)
 const charts = {}
 
-const AXIS = '#7e8aa3'
-const SPLIT = 'rgba(255,255,255,.06)'
-const NEON = ['#36a3ff', '#00e0a0', '#ff6b6b', '#ffb454', '#a78bfa']
-const STATUS_COLORS = { 运行中: '#00e0a0', 维修中: '#ffb454', 停机: '#5a6680', 报废: '#ff6b6b' }
+const AXIS = '#6c7a75'
+const SPLIT = 'rgba(30, 74, 62, .12)'
+const NEON = ['#0f8f83', '#34b88f', '#d97706', '#e36b4f', '#6e8b7e']
+const STATUS_COLORS = { 运行中: '#34b88f', 维修中: '#d97706', 停机: '#6e8b7e', 报废: '#e36b4f' }
 
 function renderTrend(trend) {
   charts.trend.setOption({
@@ -198,13 +234,13 @@ function renderTrend(trend) {
       splitLine: { lineStyle: { color: SPLIT } } },
     series: [
       { name: '问答', type: 'line', smooth: true, data: trend.qa, symbolSize: 7,
-        itemStyle: { color: '#36a3ff' }, lineStyle: { width: 2.5, shadowColor: 'rgba(54,163,255,.5)', shadowBlur: 8 },
+        itemStyle: { color: '#0f8f83' }, lineStyle: { width: 2.5, shadowColor: 'rgba(15,143,131,.24)', shadowBlur: 8 },
         areaStyle: { color: new echarts.graphic.LinearGradient(0, 0, 0, 1,
-          [{ offset: 0, color: 'rgba(54,163,255,.35)' }, { offset: 1, color: 'rgba(54,163,255,0)' }]) } },
+          [{ offset: 0, color: 'rgba(15,143,131,.24)' }, { offset: 1, color: 'rgba(15,143,131,0)' }]) } },
       { name: '报修', type: 'line', smooth: true, data: trend.records, symbolSize: 7,
-        itemStyle: { color: '#00e0a0' }, lineStyle: { width: 2.5, shadowColor: 'rgba(0,224,160,.5)', shadowBlur: 8 },
+        itemStyle: { color: '#d97706' }, lineStyle: { width: 2.5, shadowColor: 'rgba(217,119,6,.24)', shadowBlur: 8 },
         areaStyle: { color: new echarts.graphic.LinearGradient(0, 0, 0, 1,
-          [{ offset: 0, color: 'rgba(0,224,160,.30)' }, { offset: 1, color: 'rgba(0,224,160,0)' }]) } },
+          [{ offset: 0, color: 'rgba(217,119,6,.22)' }, { offset: 1, color: 'rgba(217,119,6,0)' }]) } },
     ],
   })
 }
@@ -236,7 +272,7 @@ function renderFault(list) {
       label: { show: true, position: 'right', color: AXIS },
       itemStyle: { borderRadius: [0, 8, 8, 0],
         color: new echarts.graphic.LinearGradient(0, 0, 1, 0,
-          [{ offset: 0, color: '#1f6feb' }, { offset: 1, color: '#36a3ff' }]) },
+          [{ offset: 0, color: '#08665f' }, { offset: 1, color: '#0f8f83' }]) },
     }],
   })
 }
@@ -263,7 +299,10 @@ async function load() {
     trendData.value = data.trend
     cardDefs.forEach((c) => animateTo(c.key, Number(cards[c.key]) || 0))
     animateTo('case_total', Number(cards.case_total) || 0)
+    loading.value = false
     await nextTick()
+    // 切回显示后触发 resize，避免 v-show 隐藏期间尺寸为 0
+    Object.values(charts).forEach((c) => c && c.resize())
     renderTrend(data.trend)
     renderStatus(data.device_status)
     renderFault(data.fault_top)
@@ -298,15 +337,15 @@ onBeforeUnmount(() => {
 <style scoped>
 /* 暗黑数据驾驶舱：填满内容区 */
 .dash {
-  margin: -18px; padding: 18px; min-height: calc(100vh - 56px);
-  background: radial-gradient(1200px 500px at 20% -10%, #16213c 0%, #0b0f19 55%);
+  margin: -18px; padding: 18px; min-height: calc(100dvh - 60px);
+  background: var(--bg-page);
   display: flex; flex-direction: column; gap: 14px;
 }
 
 /* 欢迎横幅 */
 .hero {
   position: relative; overflow: hidden; border-radius: 12px;
-  background: linear-gradient(120deg, #11214a 0%, #1f4fb0 100%);
+  background: #183b34;
   color: #fff; padding: 22px 28px; display: flex; align-items: center;
   justify-content: space-between; border: 1px solid rgba(120,170,255,.18);
 }
@@ -319,56 +358,57 @@ onBeforeUnmount(() => {
   mask-image: linear-gradient(90deg, #000 30%, transparent 90%);
 }
 .hero-text { position: relative; z-index: 2; }
+.hero-kicker { margin-bottom: 8px; font-size: 11px; color: rgba(255, 255, 255, .72); }
 .hero-text h2 { margin: 0 0 6px; font-size: 23px; font-weight: 700; }
 .hero-text p { margin: 0; font-size: 13px; color: rgba(255, 255, 255, .8); }
-.hero-stats { position: relative; z-index: 2; display: flex; align-items: center; gap: 22px; }
+.hero-stats { position: relative; z-index: 2; display: flex; align-items: center; gap: 22px; margin-right: 34px; }
 .hs { text-align: center; }
-.hsn { font-size: 28px; font-weight: 700; line-height: 1; color: #7fd8ff; text-shadow: 0 0 12px rgba(54,163,255,.6); }
+.hsn { font-size: 28px; font-weight: 700; line-height: 1; color: #79e2cb; text-shadow: 0 0 12px rgba(57,209,190,.3); }
 .hsl { font-size: 12px; color: rgba(255, 255, 255, .75); margin-top: 5px; }
 .hs-sep { width: 1px; height: 32px; background: rgba(255, 255, 255, .2); }
 .fs-btn {
   position: absolute; top: 14px; right: 16px; z-index: 3; border: none;
-  background: rgba(255, 255, 255, .16); color: #fff;
+  background: rgba(255, 255, 255, .12); color: #fff;
 }
 .fs-btn:hover { background: rgba(255, 255, 255, .3); color: #fff; }
 .dash:fullscreen { background: #f5f7fa; overflow-y: auto; padding: 18px; }
 
 .cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
 .card {
-  background: rgba(19, 26, 43, .8); border: 1px solid rgba(120,160,220,.12); border-radius: 12px;
+  background: var(--bg-surface); border: 1px solid var(--bd); border-radius: 12px;
   padding: 15px 18px 13px; transition: all .18s;
 }
 .card:hover {
-  transform: translateY(-2px); border-color: rgba(54,163,255,.45);
-  box-shadow: 0 8px 26px rgba(0, 0, 0, .35), 0 0 0 1px rgba(54,163,255,.15);
+  transform: translateY(-2px); border-color: rgba(15,143,131,.45);
+  box-shadow: 0 8px 26px rgba(20, 62, 53, .12), 0 0 0 1px rgba(15,143,131,.12);
 }
 .card-head { display: flex; align-items: center; justify-content: space-between; }
-.card-label { font-size: 13px; color: #8b98b0; }
-.card-ic { color: #46557a; font-size: 17px; }
+.card-label { font-size: 13px; color: var(--muted); }
+.card-ic { color: var(--muted); font-size: 17px; }
 .card-body { display: flex; align-items: baseline; gap: 4px; margin: 10px 0 8px; }
-.card-num { font-size: 30px; font-weight: 700; color: #eaf2ff; line-height: 1; letter-spacing: -.6px; }
-.card-unit { font-size: 13px; color: #6b7793; }
+.card-num { font-size: 30px; font-weight: 700; color: var(--ink); line-height: 1; letter-spacing: 0; }
+.card-unit { font-size: 13px; color: var(--muted); }
 .card-foot { height: 22px; display: flex; align-items: center; }
 .card-sub {
-  font-size: 12px; color: #9fb0cc; background: rgba(255,255,255,.05);
+  font-size: 12px; color: var(--muted); background: var(--bg-surface-2);
   padding: 2px 9px; border-radius: 6px;
 }
 .spark { width: 76px; height: 22px; opacity: .95; }
-.card.alert { border-color: rgba(255,107,107,.45); background: rgba(40,18,22,.7); }
+.card.alert { border-color: rgba(217, 119, 6, .46); background: #fff9ed; }
 .card.alert .card-label { color: #ff9b9b; }
 .card.alert .card-num { color: #ff6b6b; text-shadow: 0 0 14px rgba(255,107,107,.5); }
 .card.alert .card-ic { color: #ff8a8a; }
 
 .row { margin: 0 !important; }
 .panel {
-  background: rgba(19, 26, 43, .8); border-radius: 10px; padding: 12px 16px 6px;
-  border: 1px solid rgba(120,160,220,.12);
+  background: var(--bg-surface); border-radius: 10px; padding: 12px 16px 6px;
+  border: 1px solid var(--bd); box-shadow: var(--shadow-sm);
 }
-.ptitle { font-size: 14px; font-weight: 600; color: #cfe0ff; margin-bottom: 4px; }
+.ptitle { font-size: 14px; font-weight: 600; color: var(--ink); margin-bottom: 4px; }
 .ptitle::before {
   content: ''; display: inline-block; width: 3px; height: 13px;
-  background: #36a3ff; border-radius: 2px; margin-right: 7px; vertical-align: -1px;
-  box-shadow: 0 0 8px rgba(54,163,255,.8);
+  background: var(--brand); border-radius: 2px; margin-right: 7px; vertical-align: -1px;
+  box-shadow: 0 0 8px rgba(15,143,131,.35);
 }
 .chart { width: 100%; height: 248px; }
 
@@ -380,7 +420,7 @@ onBeforeUnmount(() => {
 @keyframes tickerScroll { from { transform: translateY(0); } to { transform: translateY(-50%); } }
 .ticker-item {
   display: flex; align-items: center; gap: 8px; padding: 9px 4px;
-  border-bottom: 1px solid rgba(255,255,255,.05);
+  border-bottom: 1px solid var(--bd-soft);
 }
 .ti-sev { font-size: 11px; padding: 2px 6px; border-radius: 4px; flex: none; }
 .sev-一般 { color: #9fb0cc; background: rgba(255,255,255,.07); }
@@ -388,9 +428,37 @@ onBeforeUnmount(() => {
 .sev-紧急 { color: #ff9b9b; background: rgba(255,107,107,.16); }
 .ti-main { flex: 1; min-width: 0; }
 .ti-top { display: flex; justify-content: space-between; font-size: 11px; color: #6b7793; }
-.ti-dev { color: #8fc0ff; }
-.ti-title { font-size: 12.5px; color: #d6e2f5; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.ti-status { font-size: 11px; color: #ffb454; flex: none; }
+.ti-dev { color: var(--brand); }
+.ti-title { font-size: 12.5px; color: var(--ink-soft); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ti-status { font-size: 11px; color: #d88a00; flex: none; }
 .ti-status.done { color: #00e0a0; }
 .ticker-empty { color: #6b7793; text-align: center; padding: 40px 0; }
+
+@media (max-width: 1024px) {
+  .dash { margin: -14px; padding: 14px; }
+  .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .hero { padding: 18px 20px; }
+  .hero-stats { gap: 14px; }
+}
+
+@media (max-width: 768px) {
+  .dash { margin: -10px; padding: 10px; gap: 10px; }
+  .hero { align-items: flex-start; flex-direction: column; gap: 16px; padding: 16px; }
+  .hero-text h2 { font-size: 20px; }
+  .hero-kicker { line-height: 1.5; max-width: 260px; }
+  .hero-text p { line-height: 1.5; }
+  .hero-stats { width: 100%; justify-content: space-between; margin-right: 0; padding-right: 32px; }
+  .hsn { font-size: 23px; }
+  .row > .el-col { flex: 0 0 100%; max-width: 100%; margin-bottom: 10px; }
+  .row > .el-col:last-child { margin-bottom: 0; }
+  .chart, .ticker { height: 220px; }
+}
+
+@media (max-width: 480px) {
+  .cards { grid-template-columns: 1fr; }
+  .hero-stats { gap: 8px; padding-right: 24px; }
+  .hsn { font-size: 20px; }
+  .hsl { font-size: 11px; }
+  .hs-sep { height: 26px; }
+}
 </style>

@@ -97,11 +97,12 @@ def answer_image_stream(
     image_desc: str,
     user_text: Optional[str] = None,
     device_model: Optional[str] = None,
+    device_context: str = "",
 ) -> Tuple[list, "callable"]:
     """已通过校验后：以图片描述检索手册并流式诊断。返回 (检索片段, 文本流生成器)。"""
     query = _compose_query(image_desc, user_text)
     contexts = retrieve(db, query, device_model=device_model)
-    messages = build_messages(query, contexts)
+    messages = build_messages(query, contexts, device_context=device_context)
 
     def gen() -> Iterator[str]:
         for piece in get_llm().stream(messages):

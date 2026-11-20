@@ -3,7 +3,7 @@
 # 00 依赖冒烟测试（M0 排雷）—— 在龙芯虚机上评估各依赖可装/可跑
 # 不改动系统，仅检测 + 在临时 venv 试装 Python 依赖，输出一份通过/失败清单。
 # 用法： bash deploy/00_smoke_test.sh
-# 建议先跑 01_install_system_deps.sh 再跑本脚本。
+# 建议先由 deploy.sh 装好系统依赖，或手动补齐 python3 后跑本脚本。
 # ============================================================
 set -uo pipefail   # 不用 -e：本脚本要把每项失败都记录下来而非中断
 
@@ -17,13 +17,13 @@ bad()  { echo "  [FAIL] $1"; FAIL=$((FAIL+1)); }
 note() { echo "  [ -- ] $1"; }
 
 echo "================ 系统工具检测 ================"
-# Python 版本（要求 >= 3.8）
+# Python 版本（代码使用 PEP 604 联合类型语法，要求 >= 3.10）
 if command -v python3 >/dev/null 2>&1; then
   PV=$(python3 -c 'import sys;print("%d.%d"%sys.version_info[:2])')
-  if python3 -c 'import sys;exit(0 if sys.version_info[:2]>=(3,8) else 1)'; then
-    ok "python3 $PV (>=3.8)"
+  if python3 -c 'import sys;exit(0 if sys.version_info[:2]>=(3,10) else 1)'; then
+    ok "python3 $PV (>=3.10)"
   else
-    bad "python3 $PV 过低，需 >=3.8"
+    bad "python3 $PV 过低，需 >=3.10"
   fi
 else
   bad "未安装 python3"
@@ -79,11 +79,11 @@ else
 fi
 
 echo
-echo "================ pgvector（可选优化）================"
+echo "================ pgvector（生产检索必需）================"
 if command -v pg_config >/dev/null 2>&1 || ls /usr/pgsql-*/bin/pg_config >/dev/null 2>&1; then
-  note "存在 pg_config，可尝试编译 pgvector（bash deploy/02_install_pgvector.sh）"
+  ok "存在 pg_config，可编译 pgvector（bash deploy/02_install_pgvector.sh）"
 else
-  note "无 pg_config（缺 postgresql-devel）。pgvector 为可选优化——不装也能用 JSON+内存余弦跑通"
+  bad "无 pg_config（缺 postgresql-devel）；生产 PostgreSQL 检索无法安装 pgvector"
 fi
 
 echo

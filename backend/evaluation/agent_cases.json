@@ -1,0 +1,12 @@
+[
+  {"id":"moto-idle","query":"发动机怠速不稳，冷车容易熄火","device_model":"通用四冲程"},
+  {"id":"moto-overheat","query":"风冷发动机持续过热怎么处理","device_model":"通用四冲程"},
+  {"id":"moto-start","query":"冷车启动困难并伴随偶发回火","device_model":"通用四冲程"},
+  {"id":"compressor-pressure","query":"螺杆空压机排气压力不足","device_model":"LS25-132"},
+  {"id":"compressor-overheat","query":"空压机排气温度持续偏高","device_model":"LS25-132"},
+  {"id":"compressor-valve","query":"空压机安全阀频繁起跳","device_model":"LS25-132"},
+  {"id":"cnc-spindle","query":"数控车床主轴出现周期性异响","device_model":"CK6140"},
+  {"id":"cnc-backlash","query":"数控车床X轴反向间隙过大","device_model":"CK6140"},
+  {"id":"cnc-alarm","query":"数控车床出现EX3005报警","device_model":"CK6140"},
+  {"id":"cnc-home","query":"数控机床回参考点找不到零位","device_model":"CK6140"}
+]

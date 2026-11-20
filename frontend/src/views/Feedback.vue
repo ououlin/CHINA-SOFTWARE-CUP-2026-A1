@@ -57,6 +57,9 @@
             </template>
           </template>
         </el-table-column>
+        <template #empty>
+          <el-empty :description="onlyCorr ? '暂无人工纠正记录，去「智能检修问答」纠正一条试试吧' : '暂无反馈记录'" :image-size="120" />
+        </template>
       </el-table>
     </el-card>
   </div>
@@ -142,11 +145,12 @@ onMounted(load)
 .stat .num { font-size: 26px; font-weight: 700; line-height: 1.2; }
 .stat .num.up { color: #67c23a; }
 .stat .num.down { color: #f56c6c; }
-.stat .num.corr { color: #14418c; }
+.stat .num.corr { color: var(--brand-deep); }
+html.dark .stat .num.corr { color: var(--brand); }
 .stat .num.pend { color: #e6a23c; }
-.stat .lbl { font-size: 12px; color: #909399; margin-top: 2px; }
+.stat .lbl { font-size: 12px; color: var(--muted); margin-top: 2px; }
 .ch { display: flex; align-items: baseline; gap: 12px; }
-.ch .hint { font-size: 12px; color: #909399; font-weight: normal; }
+.ch .hint { font-size: 12px; color: var(--muted); font-weight: normal; }
 .corr-text { color: #b88230; line-height: 1.6; }
-.muted { color: #c0c4cc; }
+.muted { color: var(--muted); }
 </style>

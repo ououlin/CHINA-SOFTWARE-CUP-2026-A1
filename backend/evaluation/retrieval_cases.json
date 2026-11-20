@@ -1,0 +1,23 @@
+[
+  {"id":"moto-idle","query":"发动机怠速不稳易熄火的排查顺序","device_model":"通用四冲程","sources":["摩托车发动机维修手册（节选）","怠速不稳故障检修案例"],"terms":["怠速油路","火花塞","气门间隙"]},
+  {"id":"moto-spark-gap","query":"火花塞电极标准间隙是多少","device_model":"通用四冲程","sources":["摩托车发动机维修手册（节选）"],"terms":["0.6~0.7mm","火花塞电极"]},
+  {"id":"moto-spark-color","query":"火花塞积碳发黑说明什么","device_model":"通用四冲程","sources":["摩托车发动机维修手册（节选）"],"terms":["混合气过浓","积碳发黑"]},
+  {"id":"moto-valve-gap","query":"进排气门冷态标准间隙","device_model":"通用四冲程","sources":["摩托车发动机维修手册（节选）"],"terms":["0.05mm","0.08mm"]},
+  {"id":"moto-oil","query":"摩托车发动机多久更换机油","device_model":"通用四冲程","sources":["摩托车发动机维修手册（节选）"],"terms":["1000~1500","更换一次机油"]},
+  {"id":"moto-overheat","query":"风冷发动机持续过热怎么排查","device_model":"通用四冲程","sources":["摩托车发动机维修手册（节选）","发动机过热故障检修案例"],"terms":["散热片","机油不足","点火正时"]},
+  {"id":"moto-clutch","query":"加速时转速升高但车速不变","device_model":"通用四冲程","sources":["摩托车发动机维修手册（节选）"],"terms":["离合器打滑","摩擦片"]},
+  {"id":"moto-start","query":"冷车启动困难需要检查哪些部件","device_model":"通用四冲程","sources":["摩托车发动机维修手册（节选）"],"terms":["阻风门","火花塞点火"]},
+  {"id":"compressor-pressure","query":"空压机排气压力不足的排查顺序","device_model":"LS25-132","sources":["螺杆式空气压缩机维修手册（节选）","螺杆空压机排气压力不足故障案例"],"terms":["进气阀","空气滤芯","管路泄漏"]},
+  {"id":"compressor-filter","query":"空气滤芯压差达到多少必须更换","device_model":"LS25-132","sources":["螺杆式空气压缩机维修手册（节选）"],"terms":["0.05MPa","滤芯压差"]},
+  {"id":"compressor-overheat","query":"螺杆空压机排气温度过高如何处理","device_model":"LS25-132","sources":["螺杆式空气压缩机维修手册（节选）"],"terms":["冷却器积灰","温控阀","油量不足"]},
+  {"id":"compressor-oil","query":"螺杆油的作用和更换周期","device_model":"LS25-132","sources":["螺杆式空气压缩机维修手册（节选）"],"terms":["润滑、密封、冷却","2000 小时"]},
+  {"id":"compressor-valve","query":"空压机安全阀多久校验一次","device_model":"LS25-132","sources":["螺杆式空气压缩机维修手册（节选）"],"terms":["每年至少校验一次","1.05~1.1"]},
+  {"id":"cnc-spindle-noise","query":"数控车床主轴周期性异响如何定位","device_model":"CK6140","sources":["数控车床维修手册（节选）","数控车床主轴轴承异响故障案例"],"terms":["听诊棒","振动分析仪","轴承磨损"]},
+  {"id":"cnc-spindle-preload","query":"主轴轴承预紧不当有什么影响","device_model":"CK6140","sources":["数控车床维修手册（节选）"],"terms":["预紧力","发热","刚性不足"]},
+  {"id":"cnc-alarm","query":"EX3005报警应该检查哪里","device_model":"CK6140","sources":["数控车床维修手册（节选）"],"terms":["X轴伺服通讯异常","连接线缆"]},
+  {"id":"cnc-backlash","query":"X轴反向间隙超过标准如何调整","device_model":"CK6140","sources":["数控车床维修手册（节选）","数控车床X轴反向间隙过大故障案例"],"terms":["0.02mm","丝杠预紧","螺母座"]},
+  {"id":"cnc-servo-overcurrent","query":"Z轴伺服过流但电机绝缘正常的原因","device_model":"CK6140","sources":["数控车床伺服驱动器过流报警案例","数控车床维修手册（节选）"],"terms":["导轨润滑不良","机械阻力"]},
+  {"id":"cnc-hydraulic","query":"数控机床液压系统压力不足怎么查","device_model":"CK6140","sources":["数控车床维修手册（节选）"],"terms":["泵磨损","溢流阀泄漏"]},
+  {"id":"cnc-home","query":"数控机床回参考点找不到零位","device_model":"CK6140","sources":["数控车床维修手册（节选）"],"terms":["减速开关","编码器零位脉冲","回零参数"]}
+]
+

@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 
 from .embedding import get_embedder
 from .models import DocChunk, Document
+from .rag.security import validate_knowledge_text
 
 # 切块参数：按字符近似切分，带重叠以减少语义割裂
 CHUNK_SIZE = 500
@@ -74,6 +75,7 @@ def ingest_text(
     chunks = _split_text(content)
     if not chunks:
         raise ValueError("案例正文为空，无法入库")
+    validate_knowledge_text(content)
 
     doc = Document(
         title=title, source_type=source_type, device_type=device_type,
@@ -104,6 +106,7 @@ def ingest_pdf(
     page_chunks = extract_pdf_chunks(pdf_path)
     if not page_chunks:
         raise ValueError("PDF 未提取到文本（可能是扫描件，需 OCR）")
+    validate_knowledge_text("\n".join(content for _, content in page_chunks))
 
     doc = Document(
         title=title, source_type=source_type, device_type=device_type,

@@ -1,11 +1,16 @@
 """FastAPI 应用入口。"""
 import time
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import PlainTextResponse
 
-from .db import Base, engine, ensure_schema
+from .config import cors_origin_list, validate_runtime_settings
+from .db import (
+    Base, engine, ensure_retrieval_schema, ensure_schema,
+    prepare_database_features,
+)
 from . import models  # noqa: F401  确保模型注册到 Base
 from .metrics import record_request, render
 from .routers import (
@@ -13,16 +18,30 @@ from .routers import (
     audit,
 )
 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """应用生命周期管理：启动时初始化，关闭时清理。"""
+    # 启动阶段
+    validate_runtime_settings()
+    prepare_database_features()
+    Base.metadata.create_all(bind=engine)
+    ensure_retrieval_schema()
+    ensure_schema()  # 轻量迁移：为旧库补齐影子知识库 pub_status / version 列
+    yield
+    # 关闭阶段（如需清理可在此添加）
+
+
 app = FastAPI(
     title="设备检修知识检索与作业系统 API",
     description="基于多模态大模型技术 · 第十五届中国软件杯 A组",
     version="0.6.0",
+    lifespan=lifespan,
 )
 
-# 开发期放开 CORS；生产由 Nginx 同源反代，可收紧
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=cors_origin_list(),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -39,12 +58,6 @@ async def metrics_middleware(request: Request, call_next):
     path = getattr(route, "path", request.url.path)
     record_request(request.method, path, response.status_code, dur)
     return response
-
-
-@app.on_event("startup")
-def on_startup():
-    Base.metadata.create_all(bind=engine)
-    ensure_schema()  # 轻量迁移：为旧库补齐影子知识库 pub_status / version 列
 
 
 @app.get("/api/health")

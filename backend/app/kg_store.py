@@ -8,7 +8,9 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .kg_align import align_extraction
-from .models import KGEntity, KGRelation
+from .models import (
+    KGEntity, KGEntityAlias, KGRelation, KGRelationEvidence, RepairCase,
+)
 
 
 def upsert_entity(db: Session, name: str, etype: str) -> KGEntity:
@@ -40,6 +42,22 @@ def persist_extraction(
         std_name = align_map.get(ent["name"], ent["name"])  # 对齐后的标准名
         e = upsert_entity(db, std_name, ent["etype"])
         name_to_id[ent["name"]] = e.id  # 原名→标准节点 id，供关系连边
+        if ent["name"] != std_name:
+            alias = db.execute(
+                select(KGEntityAlias).where(
+                    KGEntityAlias.entity_id == e.id,
+                    KGEntityAlias.alias == ent["name"],
+                )
+            ).scalar_one_or_none()
+            if not alias:
+                db.add(KGEntityAlias(
+                    entity_id=e.id,
+                    alias=ent["name"],
+                    normalization_method="entity_alignment",
+                ))
+
+    source_case = db.get(RepairCase, case_id)
+    default_evidence = (source_case.content[:1000] if source_case else "")
 
     rel_count = 0
     for r in extracted.get("relations", []):
@@ -47,8 +65,22 @@ def persist_extraction(
         did = name_to_id.get(r["target"])
         if not sid or not did:
             continue
-        db.add(KGRelation(src_id=sid, rel_type=r.get("rel", "相关"),
-                          dst_id=did, source_case_id=case_id))
+        relation = KGRelation(
+            src_id=sid, rel_type=r.get("rel", "相关"),
+            dst_id=did, source_case_id=case_id,
+        )
+        db.add(relation)
+        db.flush()
+        confidence = r.get("confidence", 1.0 if not align else 0.75)
+        db.add(KGRelationEvidence(
+            relation_id=relation.id,
+            source_case_id=case_id,
+            evidence_text=(r.get("evidence") or default_evidence),
+            extraction_method="manual_seed" if not align else "llm_aligned",
+            confidence=max(0.0, min(1.0, float(confidence))),
+            review_status="approved",
+            version=1,
+        ))
         rel_count += 1
     db.flush()
     return len(name_to_id), rel_count

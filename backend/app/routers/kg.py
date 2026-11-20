@@ -8,12 +8,66 @@ from sqlalchemy.orm import Session
 
 from ..auth import get_current_user
 from ..db import get_db
-from ..models import KGEntity, KGRelation, RepairCase, User
+from ..models import (
+    KGEntity, KGEntityAlias, KGRelation, KGRelationEvidence, RepairCase, User,
+)
 from ..schemas import (
     KGCaseBrief, KGEntityCases, KGGraph, KGLink, KGNode,
+    ReasoningChainResp,
 )
+from ..rag.graph_rag import fault_tree, reasoning_chain, reasoning_chain_with_confidence
 
 router = APIRouter(prefix="/api/kg", tags=["kg"])
+
+
+@router.get("/relations/{rid}/evidence")
+def relation_evidence(
+    rid: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Return provenance, review state and aliases for one graph relation."""
+    relation = db.get(KGRelation, rid)
+    if not relation:
+        raise HTTPException(404, "知识图谱关系不存在")
+    src = db.get(KGEntity, relation.src_id)
+    dst = db.get(KGEntity, relation.dst_id)
+    evidence = db.execute(
+        select(KGRelationEvidence)
+        .where(KGRelationEvidence.relation_id == rid)
+        .order_by(KGRelationEvidence.version.desc())
+    ).scalars().all()
+    entity_ids = [relation.src_id, relation.dst_id]
+    aliases = db.execute(
+        select(KGEntityAlias).where(KGEntityAlias.entity_id.in_(entity_ids))
+    ).scalars().all()
+    return {
+        "relation": {
+            "id": relation.id,
+            "source": src.name if src else "",
+            "type": relation.rel_type,
+            "target": dst.name if dst else "",
+        },
+        "evidence": [
+            {
+                "source_case_id": item.source_case_id,
+                "evidence_text": item.evidence_text,
+                "extraction_method": item.extraction_method,
+                "confidence": item.confidence,
+                "review_status": item.review_status,
+                "version": item.version,
+            }
+            for item in evidence
+        ],
+        "aliases": [
+            {
+                "entity_id": item.entity_id,
+                "alias": item.alias,
+                "method": item.normalization_method,
+            }
+            for item in aliases
+        ],
+    }
 
 
 def _node(e: KGEntity, degree: int = 0) -> KGNode:
@@ -103,3 +157,50 @@ def entity_cases(eid: int, db: Session = Depends(get_db),
         neighbors = [_node(n) for n in rows]
 
     return KGEntityCases(entity=_node(e), cases=cases, neighbors=neighbors)
+
+
+@router.get("/reasoning", response_model=ReasoningChainResp)
+def get_reasoning_chain(
+    query: str = Query(..., description="故障描述或关键词"),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """知识图谱推理链（G10）：从故障实体出发，推理出 故障→原因→措施 完整链路。
+
+    与 /graph 的区别：/graph 返回全图拓扑，/reasoning 返回有向推理路径，
+    前端可可视化为"诊断推理链"——直观展示系统如何从故障现象推理到处理措施。
+    """
+    chains = reasoning_chain(db, query)
+    return ReasoningChainResp(query=query, chains=chains, total=len(chains))
+
+
+@router.get("/fault_tree")
+def get_fault_tree(
+    query: str = Query(..., description="故障描述或关键词"),
+    max_depth: int = Query(3, description="最大推理深度", ge=1, le=5),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """故障树分析（FTA · G10+）：从故障实体出发，自动构建故障树结构。
+
+    返回嵌套树形结构，每个节点含 name/type/confidence/measures/children，
+    可信度沿路径深度衰减（0.85^depth），前端可用 ECharts 树图可视化。
+
+    与 /reasoning 的区别：/reasoning 返回扁平链路列表，
+    /fault_tree 返回层次化树结构，适合树形可视化与深度分析。
+    """
+    result = fault_tree(db, query, max_depth=max_depth)
+    if not result:
+        raise HTTPException(404, "知识图谱中未找到匹配的故障实体")
+    return result
+
+
+@router.get("/reasoning_confidence")
+def get_reasoning_with_confidence(
+    query: str = Query(..., description="故障描述或关键词"),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """带可信度的推理链（G10+）：每条链含置信度与跳数。"""
+    chains = reasoning_chain_with_confidence(db, query)
+    return {"query": query, "chains": chains, "total": len(chains)}

@@ -41,6 +41,9 @@
             </template>
           </template>
         </el-table-column>
+        <template #empty>
+          <el-empty description="暂无检修案例，点击右上角「提交案例」沉淀一线经验" :image-size="120" />
+        </template>
       </el-table>
     </el-card>
 
@@ -234,15 +237,16 @@ onMounted(load)
 <style scoped>
 .head { display: flex; align-items: center; justify-content: space-between; }
 .left { display: flex; align-items: center; gap: 16px; }
-.ttl { font-weight: 600; }
+.ttl { font-weight: 600; color: var(--ink); }
 .detail { padding: 2px 4px; }
 .meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.meta .author { color: #909399; font-size: 13px; margin-left: auto; }
-.content, .note { color: #303133; line-height: 1.75; white-space: pre-wrap; }
-.note { color: #606266; }
+.meta .author { color: var(--muted); font-size: 13px; margin-left: auto; }
+.content, .note { color: var(--ink-soft); line-height: 1.75; white-space: pre-wrap; }
+.note { color: var(--ink-soft); }
 .kg-info { display: flex; align-items: center; gap: 24px; margin-bottom: 14px; }
 .kg-info .stat { display: flex; flex-direction: column; align-items: center; }
-.kg-info .num { font-size: 24px; font-weight: 700; color: #14418c; }
-.kg-info .lbl { font-size: 12px; color: #909399; }
+.kg-info .num { font-size: 24px; font-weight: 700; color: var(--brand-deep); }
+html.dark .kg-info .num { color: var(--brand); }
+.kg-info .lbl { font-size: 12px; color: var(--muted); }
 .dfooter { display: flex; justify-content: flex-end; gap: 10px; }
 </style>

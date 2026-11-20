@@ -17,7 +17,7 @@
         </div>
       </template>
 
-      <el-table :data="devices" v-loading="loading" stripe>
+      <el-table :data="devices" stripe>
         <el-table-column prop="code" label="资产编号" width="116" />
         <el-table-column prop="name" label="设备名称" min-width="190" show-overflow-tooltip />
         <el-table-column prop="device_model" label="型号" width="110" />
@@ -49,6 +49,22 @@
                        @click="doDelete(row)">删除</el-button>
           </template>
         </el-table-column>
+        <!-- 空状态：加载中显示骨架行；否则显示插画式空提示 -->
+        <template #empty>
+          <div v-if="loading" class="sk-list">
+            <div v-for="n in 5" :key="'skr-' + n" class="sk-row">
+              <div class="skeleton-box" style="width:90px;height:14px;flex:none"></div>
+              <div class="skeleton-box" style="width:180px;height:14px;flex:1"></div>
+              <div class="skeleton-box" style="width:80px;height:14px;flex:none"></div>
+              <div class="skeleton-box" style="width:100px;height:14px;flex:none"></div>
+              <div class="skeleton-box" style="width:50px;height:20px;border-radius:10px;flex:none"></div>
+              <div class="skeleton-box" style="width:30px;height:14px;flex:none"></div>
+              <div class="skeleton-box" style="width:30px;height:14px;flex:none"></div>
+              <div class="skeleton-box" style="width:120px;height:14px;flex:none"></div>
+            </div>
+          </div>
+          <el-empty v-else description="暂无设备档案，点击右上角「建档」添加第一台设备" :image-size="120" />
+        </template>
       </el-table>
     </el-card>
 
@@ -431,34 +447,37 @@ onMounted(load)
 <style scoped>
 .head { display: flex; align-items: center; justify-content: space-between; }
 .left { display: flex; align-items: center; gap: 16px; }
-.ttl { font-weight: 600; }
-.muted { color: #c0c4cc; }
+.ttl { font-weight: 600; color: var(--ink); }
+.muted { color: var(--muted); }
 .cnt { margin-top: 4px; }
 .detail { padding: 2px 4px; }
 .overview { display: flex; align-items: center; gap: 28px; margin: 18px 4px; }
 .overview .stat { display: flex; flex-direction: column; align-items: center; }
-.overview .num { font-size: 26px; font-weight: 700; color: #1f2329; letter-spacing: -.4px; }
+.overview .num { font-size: 26px; font-weight: 700; color: var(--ink); letter-spacing: -.4px; }
 .overview .num.warn { color: #e6a23c; }
-.overview .lbl { font-size: 12px; color: #909399; }
+.overview .lbl { font-size: 12px; color: var(--muted); }
 .overview .acts { margin-left: auto; display: flex; gap: 8px; }
 .report-wrap { min-height: 180px; max-height: 60vh; overflow-y: auto; }
 .report-skeleton { padding: 4px 2px; }
-.rs-note { color: #1f6feb; font-size: 13px; margin-bottom: 14px; display: flex; align-items: center; gap: 6px; }
+.rs-note { color: var(--brand); font-size: 13px; margin-bottom: 14px; display: flex; align-items: center; gap: 6px; }
 .rs-note::before {
-  content: ''; width: 8px; height: 8px; border-radius: 50%; background: #1f6feb;
+  content: ''; width: 8px; height: 8px; border-radius: 50%; background: var(--brand);
   animation: rsPulse 1s ease-in-out infinite;
 }
 @keyframes rsPulse { 0%, 100% { opacity: .3; } 50% { opacity: 1; } }
 .report-md {
-  white-space: pre-wrap; line-height: 1.75; color: #303133; font-size: 14px;
+  white-space: pre-wrap; line-height: 1.75; color: var(--ink-soft); font-size: 14px;
   padding: 4px 2px;
 }
 .rec-card { margin-bottom: 2px; }
 .rec-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
-.rec-title { font-weight: 600; }
-.rec-line { margin: 3px 0; color: #303133; line-height: 1.6; }
-.rec-foot { display: flex; align-items: center; gap: 8px; color: #909399; font-size: 12px; margin-top: 6px; }
+.rec-title { font-weight: 600; color: var(--ink); }
+.rec-line { margin: 3px 0; color: var(--ink-soft); line-height: 1.6; }
+.rec-foot { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 12px; margin-top: 6px; }
 .rec-foot .el-button { margin-left: auto; }
 .klist { list-style: none; padding: 0; margin: 0; }
-.klist li { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid #f0f2f5; }
+.klist li { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--bd-soft); color: var(--ink-soft); }
+
+/* 骨架行列表样式 */
+.sk-list { padding: 8px 0; }
 </style>

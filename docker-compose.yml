@@ -1,0 +1,77 @@
+# ====================================================================
+# 设备检修知识检索与作业系统 · Docker Compose 编排
+#
+# 启动前准备：
+#   1. 复制后端环境变量模板并填写密钥：
+#        cp backend/.env.example backend/.env
+#      至少配置：DEEPSEEK_API_KEY / DASHSCOPE_API_KEY / JWT_SECRET
+#      注意：JWT_SECRET 必须是长度 ≥ 32 字符的强随机字符串
+#            （backend/app/config.py 在启动时校验，长度不足会直接拒绝启动）
+#   2. 构建并启动：
+#        docker compose up -d --build
+#   3. 访问：
+#        http://<服务器IP>/        （前端）
+#        http://<服务器IP>/api/health
+#
+# 说明：两个服务均以项目根目录作为 build context，让根目录的
+#       .dockerignore 真正生效（排除 node_modules / __pycache__ 等）。
+# ====================================================================
+services:
+  # ─── 后端服务 ────────────────────────────────────────────
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: device-repair-backend
+    # 从宿主机 backend/.env 读取环境变量（密钥、模型配置等）
+    env_file:
+      - ./backend/.env
+    environment:
+      # 容器内覆盖：让 SQLite 数据库落在持久化卷里
+      # （若 backend/.env 指定了 PostgreSQL，则此处可注释掉）
+      - DATABASE_URL=sqlite:////app/data/app.db
+      - CORS_ORIGINS=http://localhost,http://127.0.0.1
+    volumes:
+      # 数据库持久化
+      - backend-data:/app/data
+      # 上传文件持久化（PDF / 故障图片）
+      - backend-uploads:/app/uploads
+      # fastembed 模型缓存（首次启动下载，避免重建容器后重下）
+      - model-cache:/root/.cache
+    ports:
+      - "8000:8000"
+    networks:
+      - device-repair-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  # ─── 前端服务 ────────────────────────────────────────────
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    container_name: device-repair-frontend
+    ports:
+      - "80:80"
+    depends_on:
+      backend:
+        condition: service_started
+    networks:
+      - device-repair-net
+    restart: unless-stopped
+
+# ─── 数据卷：持久化后端数据 ────────────────────────────────
+volumes:
+  backend-data:        # SQLite 数据库文件
+  backend-uploads:     # 用户上传的 PDF / 故障图片
+  model-cache:         # fastembed 模型缓存
+
+# ─── 网络：容器间通信 ──────────────────────────────────────
+networks:
+  device-repair-net:
+    driver: bridge

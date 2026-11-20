@@ -1,0 +1,28 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_DB: device_repair
+      POSTGRES_USER: device_repair
+      POSTGRES_PASSWORD: device_repair_dev
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U device_repair -d device_repair"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    networks:
+      - device-repair-net
+
+  backend:
+    environment:
+      - DATABASE_URL=postgresql+pg8000://device_repair:device_repair_dev@postgres:5432/device_repair
+      - VECTOR_BACKEND=pgvector
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  postgres-data:
+

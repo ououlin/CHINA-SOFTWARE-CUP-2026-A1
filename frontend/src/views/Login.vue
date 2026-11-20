@@ -31,8 +31,9 @@
           <el-icon :size="30"><Tools /></el-icon>
           <span>检修智能助手</span>
         </div>
-        <h1 class="headline">基于多模态大模型技术的<br />设备检修知识检索与作业系统</h1>
-        <p class="subhead">融合多模态检索 · 标准化作业 · 知识沉淀 · 智能修正<br />让分散的检修经验沉淀为可检索、可执行、可演进的知识体系</p>
+        <div class="event-kicker">青年突击队“人工智能＋”创新创效专项赛</div>
+        <h1 class="headline">多模态人工智能赋能<br />设备检修提质增效</h1>
+        <p class="subhead">聚焦检修现场急难险重任务 · 连接知识检索、标准作业与智能诊断<br />让一线经验沉淀为可检索、可执行、可复制推广的数字化能力</p>
 
         <ul class="feature-list">
           <li><el-icon><Search /></el-icon><span>多模态知识检索</span></li>
@@ -41,7 +42,7 @@
           <li><el-icon><Monitor /></el-icon><span>设备健康档案</span></li>
         </ul>
 
-        <div class="brand-footer">第十五届中国软件杯 · A 组赛题 · 龙芯中科出题</div>
+        <div class="brand-footer">参赛项目：设备检修知识检索与作业系统</div>
       </div>
     </div>
 
@@ -139,7 +140,7 @@ function quickLogin(r) {
 /* ---- 左：品牌区 ---- */
 .brand-side {
   position: relative; flex: 1.15; overflow: hidden;
-  background: linear-gradient(135deg, #0a2a6b 0%, #14418c 55%, #1f6feb 120%);
+  background: #163b35;
   color: #fff; display: flex; align-items: center;
 }
 .grid-bg {
@@ -150,39 +151,43 @@ function quickLogin(r) {
   background-size: 38px 38px;
   mask-image: radial-gradient(ellipse 80% 80% at 40% 40%, #000 40%, transparent 100%);
 }
-.glow { position: absolute; border-radius: 50%; filter: blur(70px); opacity: .55; }
-.glow-1 { width: 320px; height: 320px; background: #2f7bff; top: -80px; right: -60px; }
-.glow-2 { width: 280px; height: 280px; background: #0c1f55; bottom: -90px; left: -40px; opacity: .7; }
+.glow { display: none; }
 .deco-net { position: absolute; right: 40px; top: 60px; width: 300px; height: 300px; opacity: .85; }
 .brand-content { position: relative; z-index: 2; padding: 0 64px; max-width: 560px; }
 .logo {
   display: flex; align-items: center; gap: 10px; font-size: 20px; font-weight: 700;
-  letter-spacing: .5px; margin-bottom: 34px;
+  letter-spacing: 0; margin-bottom: 34px;
 }
 .headline { font-size: 30px; line-height: 1.45; font-weight: 700; margin: 0 0 18px; }
+.event-kicker {
+  display: inline-flex; align-items: center; padding: 6px 10px; margin-bottom: 14px;
+  border: 1px solid rgba(126, 235, 211, .34); border-radius: 5px;
+  color: rgba(255, 255, 255, .9); background: rgba(255, 255, 255, .08);
+  font-size: 12px; line-height: 1.2;
+}
 .subhead { font-size: 14px; line-height: 1.8; color: rgba(255, 255, 255, .78); margin: 0 0 34px; }
 .feature-list { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 14px 18px; }
 .feature-list li {
   display: flex; align-items: center; gap: 10px; font-size: 14px;
-  background: rgba(255, 255, 255, .08); border: 1px solid rgba(255, 255, 255, .12);
-  border-radius: 10px; padding: 11px 14px; backdrop-filter: blur(4px);
+  background: rgba(255, 255, 255, .07); border: 1px solid rgba(255, 255, 255, .14);
+  border-radius: 5px; padding: 11px 14px;
 }
 .feature-list li .el-icon { color: #8fc0ff; }
-.brand-footer { margin-top: 42px; font-size: 13px; color: rgba(255, 255, 255, .6); letter-spacing: .5px; }
+.brand-footer { margin-top: 42px; font-size: 13px; color: rgba(255, 255, 255, .6); letter-spacing: 0; }
 
 /* ---- 右：表单区 ---- */
 .form-side {
   flex: .85; display: flex; align-items: center; justify-content: center;
-  background: #fff; padding: 40px;
+  background: #f7faf8; padding: 40px;
 }
-.login-box { width: 340px; }
+.login-box { width: min(340px, 100%); }
 .welcome { margin-bottom: 28px; }
 .welcome h2 { font-size: 26px; font-weight: 700; margin: 0 0 6px; color: #1f2329; }
 .welcome p { margin: 0; font-size: 14px; }
 .login-form :deep(.el-input__wrapper) { padding: 4px 14px; border-radius: 10px; }
 .submit-btn {
   width: 100%; height: 46px; font-size: 16px; letter-spacing: 4px; border-radius: 10px;
-  background: linear-gradient(135deg, #1f6feb, #14418c); border: none;
+  background: #0f8f83; border: none;
 }
 .submit-btn:hover { opacity: .92; }
 .quick-divider { margin: 26px 0 18px; }
@@ -190,12 +195,12 @@ function quickLogin(r) {
 .role-cards { display: flex; gap: 12px; }
 .role-card {
   flex: 1; cursor: pointer; text-align: center; padding: 14px 6px;
-  border: 1px solid #ebeef5; border-radius: 12px; transition: all .18s;
+  border: 1px solid #d9e2de; border-radius: 6px; transition: all .18s;
   color: var(--rc);
 }
 .role-card:hover {
   border-color: var(--rc); transform: translateY(-3px);
-  box-shadow: 0 8px 20px rgba(0, 0, 0, .08);
+  box-shadow: 0 8px 20px rgba(20, 62, 53, .1);
 }
 .rc-name { font-size: 13px; font-weight: 600; color: #303133; margin-top: 6px; }
 .rc-user { font-size: 11px; color: #a0a4ab; margin-top: 2px; }

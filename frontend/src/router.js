@@ -3,17 +3,20 @@ import { useAuthStore } from './store'
 
 import Login from './views/Login.vue'
 import Layout from './views/Layout.vue'
-import Chat from './views/Chat.vue'
-import Documents from './views/Documents.vue'
-import SOP from './views/SOP.vue'
-import Cases from './views/Cases.vue'
-import Graph from './views/Graph.vue'
-import Feedback from './views/Feedback.vue'
-import Devices from './views/Devices.vue'
-import Dashboard from './views/Dashboard.vue'
-import Alert from './views/Alert.vue'
-import Scan from './views/Scan.vue'
-import Audit from './views/Audit.vue'
+
+// 业务页按路由拆包，首屏只加载登录与应用壳层。
+const Dashboard = () => import('./views/Dashboard.vue')
+const Chat = () => import('./views/Chat.vue')
+const AgentDiagnosis = () => import('./views/AgentDiagnosis.vue')
+const Devices = () => import('./views/Devices.vue')
+const Alert = () => import('./views/Alert.vue')
+const Scan = () => import('./views/Scan.vue')
+const SOP = () => import('./views/SOP.vue')
+const Cases = () => import('./views/Cases.vue')
+const Graph = () => import('./views/Graph.vue')
+const Feedback = () => import('./views/Feedback.vue')
+const Documents = () => import('./views/Documents.vue')
+const Audit = () => import('./views/Audit.vue')
 
 const routes = [
   { path: '/login', component: Login, meta: { public: true } },
@@ -24,6 +27,7 @@ const routes = [
     children: [
       { path: 'dashboard', component: Dashboard, meta: { title: '运营数据看板', desc: '全局运营指标与数据趋势总览' } },
       { path: 'chat', component: Chat, meta: { title: '智能检修问答', desc: '多模态检索 · 多轮对话 · 语音问答 · 引用溯源' } },
+      { path: 'agent', component: AgentDiagnosis, meta: { title: 'Agent自主诊断', desc: 'ReAct推理 · 多步验证 · 故障树分析 · 结构化报告' } },
       { path: 'devices', component: Devices, meta: { title: '设备健康档案', desc: '一机一档 · 检修时间线 · 检修报告' } },
       { path: 'alert', component: Alert, meta: { title: '故障预警 · 预测性维护', desc: '风险评分 · 高频故障识别 · AI 维护建议' } },
       { path: 'scan', component: Scan, meta: { title: '扫码报修', desc: '设备二维码 · 扫码 / 输入编号即报修' } },

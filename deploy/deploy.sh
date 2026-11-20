@@ -8,7 +8,7 @@
 #   1. 填好 backend/.env（密钥），或先跑脚本让它生成模板再补填
 #   2. 把开发机构建好的 frontend/dist 上传到服务器同路径
 #
-# 可选：sudo bash deploy/02_install_pgvector.sh  （编译 pgvector 扩展）
+# PostgreSQL 生产模式会在扩展缺失时调用 02_install_pgvector.sh
 # 诊断：bash deploy/00_smoke_test.sh             （依赖冒烟测试）
 # =============================================================
 set -euo pipefail
@@ -52,14 +52,19 @@ if [[ ! -f "$ENV_FILE" ]]; then
   echo "  请编辑 $ENV_FILE，至少填写："
   echo "    DEEPSEEK_API_KEY=<your_key>"
   echo "    DASHSCOPE_API_KEY=<your_key>"
-  echo "    DATABASE_URL=sqlite:////opt/device-repair/backend/app.db   # SQLite（演示推荐）"
+  echo "    DATABASE_URL=postgresql+pg8000://devrepair:<密码>@127.0.0.1:5432/devrepair"
   echo "    JWT_SECRET=<随机字符串>"
   echo
   exit 2
 fi
 
-# 读取 DATABASE_URL
-DB_URL="$(grep -E '^DATABASE_URL=' "$ENV_FILE" | cut -d= -f2- | tr -d '"'"'")"
+# 读取数据库与检索配置
+DB_URL="$(grep -E '^DATABASE_URL=' "$ENV_FILE" | cut -d= -f2- | tr -d '"')"
+VECTOR_BACKEND="$(sed -n 's/^VECTOR_BACKEND=//p' "$ENV_FILE" | tail -n1 | tr -d '"')"
+VECTOR_BACKEND="${VECTOR_BACKEND:-auto}"
+EMBEDDING_DIM="$(sed -n 's/^EMBEDDING_DIM=//p' "$ENV_FILE" | tail -n1 | sed 's/[[:space:]#].*$//' | tr -d '"')"
+EMBEDDING_DIM="${EMBEDDING_DIM:-512}"
+[[ "$EMBEDDING_DIM" =~ ^[1-9][0-9]*$ ]] || { error "EMBEDDING_DIM 必须为正整数"; exit 1; }
 
 # ══════════════════════════════════════════════════════════════
 # 3. 数据库初始化（仅 PostgreSQL；SQLite 跳过）
@@ -71,6 +76,12 @@ if [[ "$DB_URL" == postgresql* ]]; then
   DB_USER="$(echo "$DB_URL" | sed -E 's|.*://([^:]+):.*|\1|')"
   DB_PASS="$(echo "$DB_URL" | sed -E 's|.*://[^:]+:([^@]+)@.*|\1|')"
   DB_NAME="$(echo "$DB_URL" | sed -E 's|.*/([^?]+).*|\1|')"
+  [[ "$DB_USER" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || {
+    error "DATABASE_URL 用户名仅允许字母、数字和下划线，且不能以数字开头"; exit 1;
+  }
+  [[ "$DB_NAME" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || {
+    error "DATABASE_URL 数据库名仅允许字母、数字和下划线，且不能以数字开头"; exit 1;
+  }
   PGDATA="${PGDATA:-/var/lib/pgsql/data}"
   SVC=postgresql
 
@@ -87,33 +98,48 @@ if [[ "$DB_URL" == postgresql* ]]; then
 
   systemctl enable --now "$SVC"
 
+  # 安全处理：对DB密码中的特殊字符进行转义（单引号替换为两个单引号）
+  # 防止密码包含 ' " \ $ 等特殊字符导致SQL语法错误或命令注入
+  DB_PASS_ESCAPED="${DB_PASS//\'/\'\'}"
+  DB_USER_ESCAPED="${DB_USER//\'/\'\'}"
+  DB_NAME_ESCAPED="${DB_NAME//\'/\'\'}"
+
   # 创建用户与库（幂等）
   sudo -u postgres psql -v ON_ERROR_STOP=1 <<SQL
 DO \$\$
 BEGIN
-  IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '${DB_USER}') THEN
-    CREATE ROLE ${DB_USER} LOGIN PASSWORD '${DB_PASS}';
+  IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '${DB_USER_ESCAPED}') THEN
+    CREATE ROLE ${DB_USER_ESCAPED} LOGIN PASSWORD '${DB_PASS_ESCAPED}';
   ELSE
-    ALTER ROLE ${DB_USER} WITH PASSWORD '${DB_PASS}';
+    ALTER ROLE ${DB_USER_ESCAPED} WITH PASSWORD '${DB_PASS_ESCAPED}';
   END IF;
 END
 \$\$;
 SQL
-  if ! sudo -u postgres psql -tAc "SELECT 1 FROM pg_database WHERE datname='${DB_NAME}'" | grep -q 1; then
-    sudo -u postgres psql -c "CREATE DATABASE ${DB_NAME} OWNER ${DB_USER} ENCODING 'UTF8';"
+  if ! sudo -u postgres psql -tAc "SELECT 1 FROM pg_database WHERE datname='${DB_NAME_ESCAPED}'" | grep -q 1; then
+    sudo -u postgres psql -c "CREATE DATABASE ${DB_NAME_ESCAPED} OWNER ${DB_USER_ESCAPED} ENCODING 'UTF8';"
   fi
 
   # pg_hba：放开本地密码登录
   HBA="$PGDATA/pg_hba.conf"
-  if [[ -f "$HBA" ]] && ! grep -qE "^host\s+${DB_NAME}\s+${DB_USER}\s+127.0.0.1/32" "$HBA"; then
-    echo "host  ${DB_NAME}  ${DB_USER}  127.0.0.1/32  scram-sha-256" >> "$HBA"
-    echo "host  ${DB_NAME}  ${DB_USER}  ::1/128       scram-sha-256" >> "$HBA"
+  if [[ -f "$HBA" ]] && ! grep -qE "^host\s+${DB_NAME_ESCAPED}\s+${DB_USER_ESCAPED}\s+127.0.0.1/32" "$HBA"; then
+    echo "host  ${DB_NAME_ESCAPED}  ${DB_USER_ESCAPED}  127.0.0.1/32  scram-sha-256" >> "$HBA"
+    echo "host  ${DB_NAME_ESCAPED}  ${DB_USER_ESCAPED}  ::1/128       scram-sha-256" >> "$HBA"
     systemctl reload "$SVC"
   fi
 
-  # 尝试启用 pgvector（装了就用，没装不报错）
-  sudo -u postgres psql -d "${DB_NAME}" -c "CREATE EXTENSION IF NOT EXISTS vector;" 2>/dev/null \
-    && info "pgvector 扩展已启用" || true
+  if [[ "$VECTOR_BACKEND" == "auto" || "$VECTOR_BACKEND" == "pgvector" ]]; then
+    if ! sudo -u postgres psql -tAc \
+      "SELECT 1 FROM pg_available_extensions WHERE name='vector'" | grep -q 1; then
+      info "系统尚未安装 pgvector，开始源码编译"
+      bash "$HERE/02_install_pgvector.sh"
+    fi
+    sudo -u postgres psql -v ON_ERROR_STOP=1 -d "${DB_NAME_ESCAPED}" <<SQL
+CREATE EXTENSION IF NOT EXISTS vector;
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
+SQL
+    info "vector 与 pg_trgm 扩展已启用"
+  fi
 else
   info "使用 SQLite（$DB_URL），跳过 PostgreSQL 初始化"
 fi
@@ -138,6 +164,14 @@ info "初始化数据库表与种子数据"
 if ! runuser -u "$RUN_USER" -- bash -lc "cd '$BACKEND' && ./.venv/bin/python -m app.seed"; then
   error "种子初始化失败，请检查 .env 中 DATABASE_URL 与 API Key 配置后重跑"
   exit 1
+fi
+
+if [[ "$DB_URL" == postgresql* ]]; then
+  if [[ "$VECTOR_BACKEND" == "auto" || "$VECTOR_BACKEND" == "pgvector" ]]; then
+    info "校验向量列并创建 HNSW / trigram 索引（维度 $EMBEDDING_DIM）"
+    sudo -u postgres psql -v ON_ERROR_STOP=1 -v embedding_dim="$EMBEDDING_DIM" \
+      -d "${DB_NAME_ESCAPED}" -f "$HERE/03_migrate_pgvector.sql"
+  fi
 fi
 
 info "注册并启动 systemd 服务"

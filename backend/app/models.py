@@ -8,15 +8,46 @@ M5：大模型输出标注与修正——反馈/纠正表（含纠正问题向�
 import datetime as dt
 
 from sqlalchemy import (
-    Column, Integer, String, Text, DateTime, ForeignKey, JSON, UniqueConstraint
+    Column, Integer, String, Text, DateTime, ForeignKey, JSON, UniqueConstraint,
+    Float,
 )
 from sqlalchemy.orm import relationship
+from sqlalchemy.types import UserDefinedType
 
+from .config import settings
 from .db import Base
 
 
+class VectorType(UserDefinedType):
+    """Minimal pgvector SQLAlchemy type without numpy/client runtime dependencies."""
+
+    cache_ok = True
+
+    def __init__(self, dimensions: int):
+        self.dimensions = dimensions
+
+    def get_col_spec(self, **kwargs):
+        return f"VECTOR({self.dimensions})"
+
+    def bind_processor(self, dialect):
+        def process(value):
+            if value is None or isinstance(value, str):
+                return value
+            return "[" + ",".join(str(float(x)) for x in value) + "]"
+        return process
+
+    def result_processor(self, dialect, coltype):
+        def process(value):
+            if value is None or isinstance(value, list):
+                return value
+            text_value = str(value).strip().strip("[]")
+            return [float(x) for x in text_value.split(",")] if text_value else []
+        return process
+
+
 def _now():
-    return dt.datetime.utcnow()
+    # SQLAlchemy DateTime columns are timezone-naive; persist UTC consistently.
+    return dt.datetime.now(dt.timezone.utc).replace(tzinfo=None)
 
 
 class User(Base):
@@ -55,7 +86,10 @@ class DocChunk(Base):
     content = Column(Text, nullable=False)
     page = Column(Integer, default=0)
     # 开发期(SQLite)：以 JSON 数组存向量；生产(pgvector)：替换为 vector 列
-    embedding = Column(JSON, nullable=True)
+    embedding = Column(
+        JSON().with_variant(VectorType(settings.embedding_dim), "postgresql"),
+        nullable=True,
+    )
     created_at = Column(DateTime, default=_now)
 
     document = relationship("Document", back_populates="chunks")
@@ -176,6 +210,38 @@ class KGRelation(Base):
     dst_id = Column(Integer, ForeignKey("kg_entities.id"), nullable=False, index=True)
     source_case_id = Column(Integer, ForeignKey("repair_cases.id"),
                             nullable=True, index=True)
+    created_at = Column(DateTime, default=_now)
+
+
+class KGEntityAlias(Base):
+    """Entity alias mapped to a canonical KG entity for auditable resolution."""
+
+    __tablename__ = "kg_entity_aliases"
+
+    id = Column(Integer, primary_key=True)
+    entity_id = Column(Integer, ForeignKey("kg_entities.id"), nullable=False, index=True)
+    alias = Column(String(128), nullable=False, index=True)
+    normalization_method = Column(String(32), default="rule")
+    created_at = Column(DateTime, default=_now)
+
+    __table_args__ = (
+        UniqueConstraint("entity_id", "alias", name="uq_kg_entity_alias"),
+    )
+
+
+class KGRelationEvidence(Base):
+    """Provenance and governance metadata for an extracted KG relation."""
+
+    __tablename__ = "kg_relation_evidence"
+
+    id = Column(Integer, primary_key=True)
+    relation_id = Column(Integer, ForeignKey("kg_relations.id"), nullable=False, index=True)
+    source_case_id = Column(Integer, ForeignKey("repair_cases.id"), nullable=True, index=True)
+    evidence_text = Column(Text, default="")
+    extraction_method = Column(String(32), default="llm")
+    confidence = Column(Float, default=0.75)
+    review_status = Column(String(24), default="approved", index=True)
+    version = Column(Integer, default=1)
     created_at = Column(DateTime, default=_now)
 
 
