@@ -67,10 +67,9 @@
 
 <script setup>
 import { ref, reactive, computed, onMounted, onBeforeUnmount, nextTick } from 'vue'
-import { ElMessage } from 'element-plus'
 import { MagicStick, Download, WarningFilled, Warning, CircleCheck } from '@element-plus/icons-vue'
 import { Refresh } from '@element-plus/icons-vue'
-import * as echarts from 'echarts'
+import { echarts } from '../lib/chart'
 import api from '../api'
 import { useAuthStore } from '../store'
 import PageHeader from '../components/PageHeader.vue'

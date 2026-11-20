@@ -235,7 +235,6 @@
 
 <script setup>
 import { ref, reactive, computed, onMounted, nextTick } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   MagicStick, VideoPlay, View, Select, Document,
   Close, Check, Service, WarnTriangleFilled,

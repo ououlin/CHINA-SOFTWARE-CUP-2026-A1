@@ -57,9 +57,8 @@
 
 <script setup>
 import { ref, reactive, onMounted, onBeforeUnmount, nextTick } from 'vue'
-import { ElMessage } from 'element-plus'
 import { Refresh, Document } from '@element-plus/icons-vue'
-import * as echarts from 'echarts'
+import { echarts } from '../lib/chart'
 import api from '../api'
 
 const TYPES = [

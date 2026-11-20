@@ -213,7 +213,6 @@
 
 <script setup>
 import { ref, reactive, computed, onMounted } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, View, Warning, Delete, Document, Tickets, Download, Collection } from '@element-plus/icons-vue'
 import api from '../api'
 import { useAuthStore } from '../store'

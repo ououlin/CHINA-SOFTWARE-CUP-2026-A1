@@ -173,14 +173,13 @@
 <script setup>
 import { ref, nextTick, onBeforeUnmount, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
-import { ElMessage } from 'element-plus'
 import {
   Position, Loading, CircleCheckFilled, Promotion, Tools, WarnTriangleFilled,
   Document, Share, Right, Cpu, Search, View, Setting, Files, Connection,
 } from '@element-plus/icons-vue'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
-import * as echarts from 'echarts'
+import { echarts } from '../lib/chart'
 import api from '../api'
 import { useAuthStore } from '../store'
 

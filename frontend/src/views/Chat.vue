@@ -218,7 +218,6 @@
 <script setup>
 import { ref, nextTick, onMounted, onBeforeUnmount, reactive, computed } from 'vue'
 import { useRouter } from 'vue-router'
-import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   Picture, CircleClose, View, EditPen, MagicStick, CircleCheck, Microphone, Search, Share, Tickets,
   Loading, WarnTriangleFilled, Promotion, Right, Position,

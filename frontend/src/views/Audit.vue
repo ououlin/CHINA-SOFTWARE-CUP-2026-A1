@@ -28,7 +28,6 @@
 
 <script setup>
 import { ref, onMounted } from 'vue'
-import { ElMessage } from 'element-plus'
 import api from '../api'
 
 const ACTIONS = {

@@ -93,7 +93,6 @@
 
 <script setup>
 import { ref, reactive, onMounted, onBeforeUnmount, nextTick } from 'vue'
-import { ElMessage } from 'element-plus'
 import { VideoCamera, Search, Download, Warning, Sunny } from '@element-plus/icons-vue'
 import QRCode from 'qrcode'
 import { Html5Qrcode } from 'html5-qrcode'

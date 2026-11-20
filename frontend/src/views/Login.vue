@@ -83,7 +83,6 @@
 <script setup>
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus'
 import {
   User, Lock, Tools, Search, Tickets, Share, Monitor, Avatar, Checked, UserFilled,
 } from '@element-plus/icons-vue'

@@ -130,11 +130,9 @@
 
 <script setup>
 import { ref, reactive, computed, onMounted, onBeforeUnmount, nextTick } from 'vue'
-import { ElMessage } from 'element-plus'
 import {
   Monitor, Warning, Collection, EditPen, Tickets, ChatDotRound, Star, Share, FullScreen,
 } from '@element-plus/icons-vue'
-import * as echarts from 'echarts'
 import api from '../api'
 import { useAuthStore } from '../store'
 
@@ -218,6 +216,20 @@ const faultEl = ref(null)
 const kgEl = ref(null)
 const charts = {}
 
+// 图表库按需懒加载：首屏先渲染指标与骨架，数据到位后再拉 echarts 分块并初始化，
+// 避免 200KB+ 的图表运行时代码阻塞驾驶舱首屏。
+let echarts = null
+async function ensureCharts() {
+  if (echarts) return
+  const mod = await import('../lib/chart')
+  echarts = mod.echarts
+  await nextTick()
+  charts.trend = echarts.init(trendEl.value)
+  charts.status = echarts.init(statusEl.value)
+  charts.fault = echarts.init(faultEl.value)
+  charts.kg = echarts.init(kgEl.value)
+}
+
 const AXIS = '#6c7a75'
 const SPLIT = 'rgba(30, 74, 62, .12)'
 const NEON = ['#0f8f83', '#34b88f', '#d97706', '#e36b4f', '#6e8b7e']
@@ -300,6 +312,7 @@ async function load() {
     cardDefs.forEach((c) => animateTo(c.key, Number(cards[c.key]) || 0))
     animateTo('case_total', Number(cards.case_total) || 0)
     loading.value = false
+    await ensureCharts()
     await nextTick()
     // 切回显示后触发 resize，避免 v-show 隐藏期间尺寸为 0
     Object.values(charts).forEach((c) => c && c.resize())
@@ -319,11 +332,6 @@ function onResize() {
 }
 
 onMounted(async () => {
-  await nextTick()
-  charts.trend = echarts.init(trendEl.value)
-  charts.status = echarts.init(statusEl.value)
-  charts.fault = echarts.init(faultEl.value)
-  charts.kg = echarts.init(kgEl.value)
   window.addEventListener('resize', onResize)
   await load()
 })
