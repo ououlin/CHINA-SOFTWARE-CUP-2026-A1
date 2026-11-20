@@ -201,11 +201,13 @@ def _retrieve_postgres(
                 sum(rrf_score) AS rrf_score
             FROM (
                 SELECT chunk_id, vec_score, NULL::double precision AS lex_score,
-                       :use_vector / (:rrf_k + rank_no) AS rrf_score
+                       CAST(:use_vector AS double precision)
+                           / (CAST(:rrf_k AS double precision) + rank_no) AS rrf_score
                 FROM vector_ranked
                 UNION ALL
                 SELECT chunk_id, NULL::double precision AS vec_score, lex_score,
-                       :use_lexical / (:rrf_k + rank_no) AS rrf_score
+                       CAST(:use_lexical AS double precision)
+                           / (CAST(:rrf_k AS double precision) + rank_no) AS rrf_score
                 FROM lexical_ranked
             ) ranked
             GROUP BY chunk_id

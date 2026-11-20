@@ -51,6 +51,10 @@ def test_postgres_query_contains_vector_trigram_and_rrf():
     assert "<=>" in sql
     assert "similarity(" in sql
     assert "rrf_score" in sql
+    # RRF 权重与 k 必须显式转 double precision：否则 pg8000 以文本发送 1.0，
+    # PostgreSQL 会把参数推导成 bigint 并报 invalid input syntax for type bigint。
+    assert "CAST(:use_vector AS double precision)" in sql
+    assert "CAST(:rrf_k AS double precision)" in sql
     assert "has_partial_match" in sql
     assert "content % :query" not in sql
     assert db.params["top_k"] == 4
