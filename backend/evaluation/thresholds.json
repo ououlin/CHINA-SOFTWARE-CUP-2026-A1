@@ -19,6 +19,10 @@
     "load": {
       "error_rate": { "max": 0.01 },
       "sse_error_event_rate": { "max": 0.01 }
+    },
+    "bench": {
+      "latency_ms_p95": { "max": 50 },
+      "recall_at_k": { "min": 0.8 }
     }
   }
 }

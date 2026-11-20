@@ -9,6 +9,7 @@
 
 优化：先在数据库层面按 device_model 过滤文档，减少全表扫描开销。
 """
+import heapq
 import math
 import re
 import time
@@ -22,11 +23,24 @@ from ..embedding import get_embedder
 from ..metrics import observe
 from ..models import DocChunk, Document
 
+try:  # 可选加速器：有 numpy 时向量打分为矩阵乘，无则退回纯 Python（LoongArch 生产路径不依赖 numpy）
+    import numpy as _np
+except ImportError:  # pragma: no cover - 取决于运行环境
+    _np = None
+
 # 重排融合权重与召回倍数
 _VEC_WEIGHT = 0.7
 _LEX_WEIGHT = 0.3
 _RECALL_MULT = 3
 _RECALL_MIN = 12
+
+# 语料索引缓存：键为 (引擎实例, 设备型号)，用 (行数, 最大 id) 做版本号失效；
+# TTL 兜底处理「原地更新内容但行数不变」的场景。
+_INDEX_CACHE: dict[tuple, dict] = {}
+_INDEX_TTL_SECONDS = 120.0
+_CORPUS_VERSION_SQL = text(
+    "SELECT count(*) AS total, coalesce(max(id), 0) AS latest FROM doc_chunks"
+)
 
 _CJK_RE = re.compile(r"[一-鿿]")
 _WORD_RE = re.compile(r"[a-zA-Z0-9]+")
@@ -62,6 +76,108 @@ def _lexical(q_terms: set, content: str) -> float:
         return 0.0
     inter = len(q_terms & _terms(content))
     return inter / len(q_terms)
+
+
+def _overlap_ratio(q_terms: set, chunk_terms: set) -> float:
+    """同 `_lexical`，但复用预先算好的分块词项集合，避免每次查询重复分词。"""
+    if not q_terms:
+        return 0.0
+    return len(q_terms & chunk_terms) / len(q_terms)
+
+
+def invalidate_retrieval_cache() -> None:
+    """清空语料索引缓存；写入/审核后如发现检索滞后可直接调用。"""
+    _INDEX_CACHE.clear()
+
+
+def _corpus_version(db: Session) -> tuple[int, int]:
+    row = db.execute(_CORPUS_VERSION_SQL).one()
+    return int(row[0]), int(row[1])
+
+
+def _build_index(db: Session, device_model: Optional[str]) -> dict:
+    """把分块与其向量整理成可复用的内存索引（含词项集合与归一化向量矩阵）。"""
+    entries = []
+    for chunk, doc in _load_filtered_chunks(db, device_model):
+        entries.append({
+            "chunk_id": chunk.id,
+            "doc_id": doc.id,
+            "page": chunk.page,
+            "content": chunk.content,
+            "doc_title": doc.title,
+            "device_model": doc.device_model,
+            "vector": chunk.embedding or [],
+            "terms": _terms(chunk.content),
+        })
+    index: dict = {"entries": entries, "matrix": None}
+    if _np is not None and entries:
+        dim = settings.embedding_dim
+        matrix = _np.zeros((len(entries), dim), dtype=_np.float32)
+        usable = 0
+        for row, entry in enumerate(entries):
+            vector = entry["vector"]
+            if vector and len(vector) == dim:
+                matrix[row] = vector
+                usable += 1
+        if usable:
+            norms = _np.linalg.norm(matrix, axis=1)
+            norms[norms == 0] = 1.0
+            index["matrix"] = matrix / norms[:, None]
+    return index
+
+
+def _load_index(db: Session, device_model: Optional[str]) -> dict:
+    """取语料索引：命中缓存时只花一次 count/max(id) 的版本查询。"""
+    bind = db.get_bind()
+    key = (id(bind), normalize_model(device_model or ""))
+    version = _corpus_version(db)
+    cached = _INDEX_CACHE.get(key)
+    if (
+        cached is not None
+        and cached["version"] == version
+        and time.monotonic() - cached["loaded_at"] < _INDEX_TTL_SECONDS
+    ):
+        return cached
+    index = _build_index(db, device_model)
+    index["version"] = version
+    index["loaded_at"] = time.monotonic()
+    _INDEX_CACHE[key] = index
+    return index
+
+
+def _top_indices(scores: List[float], limit: int) -> List[int]:
+    if limit <= 0 or not scores:
+        return []
+    if limit >= len(scores):
+        return sorted(range(len(scores)), key=lambda i: scores[i], reverse=True)
+    return heapq.nlargest(limit, range(len(scores)), key=lambda i: scores[i])
+
+
+def _parent_contexts(db: Session, items: List[tuple], window: int) -> dict:
+    """批量取父上下文：一次查询取回相关文档的全部块，避免每条结果一次查询（N+1）。"""
+    doc_ids = {item[1] for item in items}
+    if not doc_ids:
+        return {}
+    rows = db.execute(
+        select(DocChunk.id, DocChunk.doc_id, DocChunk.content)
+        .where(DocChunk.doc_id.in_(doc_ids))
+        .order_by(DocChunk.doc_id, DocChunk.page, DocChunk.id)
+    ).all()
+    grouped: dict = {}
+    for chunk_id, doc_id, content in rows:
+        grouped.setdefault(doc_id, []).append((chunk_id, content))
+    contexts = {}
+    for chunk_id, doc_id in items:
+        siblings = grouped.get(doc_id) or []
+        ids = [item[0] for item in siblings]
+        if chunk_id not in ids:
+            continue
+        position = ids.index(chunk_id)
+        low = max(0, position - window)
+        high = min(len(siblings), position + window + 1)
+        if high - low > 1:
+            contexts[chunk_id] = "\n".join(item[1] for item in siblings[low:high])
+    return contexts
 
 
 def _parent_content(db: Session, doc_id: int, chunk_id: int, window: int) -> Optional[str]:
@@ -124,10 +240,19 @@ def _retrieve_postgres(
 ) -> List[dict]:
     """PostgreSQL production path: pgvector + pg_trgm recall fused by RRF."""
     candidate_k = max(settings.hybrid_candidate_k, top_k * _RECALL_MULT)
+    # 生产检索走 HNSW：按配置调 ef_search（会话级），在召回与延迟之间取舍。
+    if settings.pgvector_ef_search and settings.pgvector_ef_search > 0:
+        try:
+            db.execute(
+                text("SELECT set_config('hnsw.ef_search', :value, false)"),
+                {"value": str(int(settings.pgvector_ef_search))},
+            )
+        except Exception:  # 扩展版本不支持该参数时保持默认值
+            pass
     use_vector = 0.0 if settings.retrieval_mode == "lexical" else 1.0
     use_lexical = 0.0 if settings.retrieval_mode == "vector" else 1.0
     sql = text("""
-        WITH model_state AS (
+        WITH model_state AS MATERIALIZED (
             SELECT
               EXISTS (
                 SELECT 1 FROM documents d
@@ -145,7 +270,7 @@ def _retrieve_postgres(
                       ) > 0
               ) AS has_partial_match
         ),
-        eligible AS (
+        eligible AS MATERIALIZED (
             SELECT
                 c.id AS chunk_id, c.doc_id, c.page, c.content, c.embedding,
                 d.title AS doc_title, d.device_model
@@ -290,56 +415,78 @@ def retrieve(
         observe("rag_retrieve", time.perf_counter() - _t0)
         return results
 
-    # 优化：先在数据库层面过滤，避免全表扫描
-    rows = _load_filtered_chunks(db, device_model)
+    # SQLite/Python 回退：取语料索引（带版本缓存），向量与字面分别召回候选，再用 RRF 合并。
+    load_started = time.perf_counter()
+    index = _load_index(db, device_model)
+    observe("rag_retrieve_corpus", time.perf_counter() - load_started)
 
-    # SQLite/Python 回退：向量与字面分别召回候选，再用 RRF 合并。
+    entries = index["entries"]
+    if not entries:
+        observe("rag_retrieve", time.perf_counter() - _t0)
+        return []
+
+    score_started = time.perf_counter()
     q_terms = _terms(query)
-    scored = []
-    for chunk, doc in rows:
-        # 混合/字面模式仍须保留尚未生成向量的文本分块。
-        if not chunk.embedding and settings.retrieval_mode == "vector":
-            continue
-        vec = _cosine(qvec, chunk.embedding or [])
-        lex = _lexical(q_terms, chunk.content)
-        scored.append((vec, lex, chunk, doc))
+    matrix = index["matrix"]
+    if _np is not None and matrix is not None:
+        query_vec = _np.asarray(qvec, dtype=_np.float32)
+        norm = float(_np.linalg.norm(query_vec)) or 1.0
+        vec_scores = (matrix @ (query_vec / norm)).tolist()
+    else:
+        vec_scores = [_cosine(qvec, entry["vector"]) for entry in entries]
+    lex_scores = [_overlap_ratio(q_terms, entry["terms"]) for entry in entries]
+    observe("rag_retrieve_score", time.perf_counter() - score_started)
 
-    vector_top = sorted(scored, key=lambda x: x[0], reverse=True)[:candidate_k]
-    lexical_top = sorted(scored, key=lambda x: x[1], reverse=True)[:candidate_k]
-    fused = {}
+    fused: dict = {}
     if settings.retrieval_mode != "lexical":
-        for rank, (vec, lex, chunk, doc) in enumerate(vector_top, start=1):
-            fused[chunk.id] = [1.0 / (settings.hybrid_rrf_k + rank), vec, lex, chunk, doc]
+        for rank, position in enumerate(_top_indices(vec_scores, candidate_k), start=1):
+            fused[position] = [1.0 / (settings.hybrid_rrf_k + rank)]
     if settings.retrieval_mode != "vector":
-        for rank, (vec, lex, chunk, doc) in enumerate(lexical_top, start=1):
-            item = fused.setdefault(chunk.id, [0.0, vec, lex, chunk, doc])
+        for rank, position in enumerate(_top_indices(lex_scores, candidate_k), start=1):
+            item = fused.setdefault(position, [0.0])
             item[0] += 1.0 / (settings.hybrid_rrf_k + rank)
-    candidates = sorted(fused.values(), key=lambda x: (x[0], x[1]), reverse=True)
+    ranked = sorted(
+        fused,
+        key=lambda position: (fused[position][0], vec_scores[position], lex_scores[position]),
+        reverse=True,
+    )[:top_k]
+
+    parents: dict = {}
+    if settings.parent_child_enabled and ranked:
+        # 一次查询取回全部父上下文，替代逐条查询（原实现为 N+1）。
+        parents = _parent_contexts(
+            db,
+            [(entries[position]["chunk_id"], entries[position]["doc_id"]) for position in ranked],
+            settings.parent_window,
+        )
 
     results = []
-    for rrf_score, vec, lex, chunk, doc in candidates[:top_k]:
+    for position in ranked:
+        entry = entries[position]
+        rrf_score = fused[position][0]
+        vec = vec_scores[position]
+        lex = lex_scores[position]
         final = (
             vec if settings.retrieval_mode == "vector"
             else lex if settings.retrieval_mode == "lexical"
             else vec * _VEC_WEIGHT + lex * _LEX_WEIGHT
         )
         item = {
-            "chunk_id": chunk.id,
-            "doc_id": doc.id,
-            "doc_title": doc.title,
-            "device_model": doc.device_model,
-            "page": chunk.page,
-            "content": chunk.content,        # 精确子块，用于引用展示
+            "chunk_id": entry["chunk_id"],
+            "doc_id": entry["doc_id"],
+            "doc_title": entry["doc_title"],
+            "device_model": entry["device_model"],
+            "page": entry["page"],
+            "content": entry["content"],        # 精确子块，用于引用展示
             "score": round(float(final), 4),
             "vec_score": round(float(vec), 4),
             "lex_score": round(float(lex), 4),
             "rrf_score": round(float(rrf_score), 6),
             "retrieval_method": f"python_rrf:{settings.retrieval_mode}",
         }
-        if settings.parent_child_enabled:
-            pc = _parent_content(db, doc.id, chunk.id, settings.parent_window)
-            if pc and pc != chunk.content:
-                item["parent_content"] = pc  # 父块上下文，喂模型用
+        parent = parents.get(entry["chunk_id"])
+        if parent and parent != entry["content"]:
+            item["parent_content"] = parent  # 父块上下文，喂模型用
         results.append(item)
 
     observe("rag_retrieve", time.perf_counter() - _t0)

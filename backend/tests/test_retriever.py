@@ -57,3 +57,24 @@ def test_retrieval_ablation_modes_are_reported(db_session, monkeypatch):
         assert results
         assert all(r["retrieval_method"] == f"python_rrf:{mode}" for r in results)
         assert all("rrf_score" in r for r in results)
+
+
+def test_parent_context_batched_when_enabled(db_session, monkeypatch):
+    """父块上下文由批量查询补齐，保证开启 parent_child 时结果带相邻段。"""
+    doc = Document(title="父子分块手册", status="approved", device_model="CNC-01")
+    db_session.add(doc)
+    db_session.flush()
+    db_session.add_all([
+        DocChunk(doc_id=doc.id, page=1, content="批次ALPHA 第一段：检查主轴。", embedding=None),
+        DocChunk(doc_id=doc.id, page=2, content="批次ALPHA 第二段：复核轴承。", embedding=None),
+    ])
+    db_session.commit()
+
+    monkeypatch.setattr(settings, "parent_child_enabled", True)
+    monkeypatch.setattr(settings, "retrieval_mode", "lexical")
+    results = retrieve(db_session, "批次ALPHA", top_k=2)
+
+    assert results
+    parents = [item for item in results if item.get("parent_content")]
+    assert parents
+    assert "第二段" in parents[0]["parent_content"]

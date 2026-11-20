@@ -56,6 +56,7 @@ class Settings(BaseSettings):
     retrieval_mode: str = "hybrid"      # hybrid | vector | lexical
     hybrid_rrf_k: int = 60
     hybrid_candidate_k: int = 50
+    pgvector_ef_search: int = 40      # HNSW 查询期 ef_search，越大召回越高、延迟越大
     query_rewrite_enabled: bool = True   # 进阶：检索前把口语 query 改写为工业术语
     graph_rag_enabled: bool = True       # 进阶：Graph RAG，注入知识图谱邻居作结构化上下文
     parent_child_enabled: bool = True    # 进阶：父子分块，召回子块、喂模型父块上下文
